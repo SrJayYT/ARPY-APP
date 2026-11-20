@@ -263,7 +263,7 @@ flowchart TB
 
 ## Development
 
-Requirements: **Node.js 20+**, Windows 10/11. Python 3 is optional (some tests use it).
+Requirements: **Node.js 22+**, Windows 10/11. Python 3 is optional (some tests use it).
 
 ```bash
 git clone https://github.com/SrJayYT/ARPY-APP.git
@@ -515,7 +515,7 @@ flowchart TB
 
 ## Desarrollo
 
-Requisitos: **Node.js 20+** y Windows 10/11. Python 3 es opcional (lo usan algunas pruebas).
+Requisitos: **Node.js 22+** y Windows 10/11. Python 3 es opcional (lo usan algunas pruebas).
 
 ```bash
 git clone https://github.com/SrJayYT/ARPY-APP.git
