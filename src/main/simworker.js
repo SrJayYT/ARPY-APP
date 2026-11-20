@@ -54,8 +54,10 @@ for (const port of Object.keys(ports)) {
   });
 }
 
-let serialBuf = '';
-usart.onByteTransmit = (b) => { serialBuf += String.fromCharCode(b); };
+// Bytes del puerto serie; se decodifican como UTF-8 (tildes, ñ) al enviarlos a la interfaz.
+let serialBytes = [];
+const utf8 = new TextDecoder('utf-8');
+usart.onByteTransmit = (b) => { serialBytes.push(b); };
 
 const rxQueue = [];
 usart.onRxComplete = () => feedRx();
@@ -63,7 +65,26 @@ function feedRx() {
   if (rxQueue.length && !usart.rxBusy) usart.writeByte(rxQueue.shift());
 }
 
+// Entradas digitales desde los componentes simulados (pulsadores, sensores PIR…).
+// external[i]: true/false = el componente fuerza el nivel; undefined = libre.
+const external = PINS.map(() => undefined);
+const applied = PINS.map(() => null);
+// avr8js no aplica la resistencia pull-up interna: la emulamos para pines libres en INPUT_PULLUP.
+function syncInputs() {
+  PINS.forEach((p, i) => {
+    const port = ports[p.port];
+    const st = port.pinState(p.bit);
+    let want = external[i];
+    if (want === undefined) want = st === PinState.InputPullUp;
+    if (applied[i] !== want) { applied[i] = want; port.setPin(p.bit, want); }
+  });
+}
+
 parentPort.on('message', (msg) => {
+  if (msg.type === 'digital') {
+    const i = PINS.findIndex((p) => p.name === msg.pin || (msg.pin && msg.pin.startsWith('A') && p.name === msg.pin));
+    if (i >= 0) { external[i] = msg.value === null ? undefined : !!msg.value; syncInputs(); }
+  }
   if (msg.type === 'analog') adc.channelValues[msg.channel] = msg.volts;
   if (msg.type === 'serial') { for (const ch of Buffer.from(msg.text, 'utf8')) rxQueue.push(ch); feedRx(); }
 });
@@ -78,6 +99,7 @@ function run() {
     cpu.tick();
   }
   feedRx();
+  syncInputs();
   if (cpu.cycles - lastReport >= FREQ / 30) {
     const span = cpu.cycles - lastReport;
     const pins = PINS.map((p, i) => {
@@ -88,8 +110,9 @@ function run() {
       return { name: p.name, duty: Math.max(0, Math.min(1, high / span)) };
     });
     lastReport = cpu.cycles;
-    parentPort.postMessage({ type: 'state', pins, serial: serialBuf, seconds: cpu.cycles / FREQ });
-    serialBuf = '';
+    const serial = serialBytes.length ? utf8.decode(Uint8Array.from(serialBytes), { stream: true }) : '';
+    serialBytes = [];
+    parentPort.postMessage({ type: 'state', pins, serial, seconds: cpu.cycles / FREQ });
   }
   setTimeout(run, 5);
 }

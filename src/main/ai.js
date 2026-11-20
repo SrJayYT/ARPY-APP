@@ -1,10 +1,12 @@
 const settings = require('./settings');
 const project = require('./project');
 const { findBoard } = require('../shared/boards');
+const parts = require('../shared/parts');
 
 const API = 'https://generativelanguage.googleapis.com/v1beta';
 const MAX_HISTORY = 80; // mensajes previos que se envían en cada petición
-const MAX_IMAGES = 4; // imágenes más recientes que se reenvían
+const MAX_IMAGES_NOW = 10; // todas las del último mensaje (hasta 10)
+const MAX_IMAGES_OLD = 4; // más algunas de mensajes anteriores, para poder compararlas
 
 function tail(text, n) {
   if (!text) return '';
@@ -17,6 +19,9 @@ function systemPrompt(root, live) {
   const files = project.snapshot(root);
   const memory = project.loadMemory(root).trim();
   const sketch = cfg.sketch || 'sketch';
+  const wiring = project.loadWiring(root);
+  const wiringText = parts.describe(wiring);
+  const wiringWarn = wiring ? parts.check(wiring) : [];
 
   const fileDump = files
     .map((f) => `===== ARCHIVO: ${f.path} =====\n${f.content}`)
@@ -29,8 +34,14 @@ function systemPrompt(root, live) {
 - Si el usuario dice "eso", "lo de antes", "arréglalo", "hazlo", se refiere a lo último que se habló o al archivo/selección activa.
 - Analiza a fondo antes de responder: revisa los dos lados (sketch Arduino y programa Python) para que el protocolo serie, la velocidad (baudios), los pines y los formatos de mensaje coincidan.
 - Ten en cuenta la placa seleccionada: sus pines, voltaje (3.3V o 5V), memoria, librerías compatibles y capacidades (WiFi, BLE, matriz LED, etc.).
-- Si el usuario envía una foto del circuito, revísala con cuidado: identifica componentes, cables y pines, y señala conexiones incorrectas o peligrosas (cortos, falta de resistencias, voltajes incompatibles).
-- Responde en español, claro y directo. Explica brevemente qué cambiaste y por qué.
+- IMÁGENES: cuando el usuario adjunta una o varias imágenes, analízalas SIEMPRE antes de responder, aunque no diga nada más. Si son varias, recórrelas una por una ("Imagen 1: …", "Imagen 2: …") y luego relaciónalas entre sí y con el proyecto.
+  - Foto de un circuito o protoboard: identifica la placa, cada componente, los cables y a qué pin va cada uno (por colores y posición). Compara con el sketch y con las conexiones del proyecto, y señala errores o peligros (cortos, LEDs sin resistencia, 5V en pines de 3.3V, GND sin conectar, cables en la fila equivocada).
+  - Captura de pantalla de un error (Arduino IDE, consola, Python): transcribe el error exacto, explica la causa y corrígela en los archivos.
+  - Esquema, diagrama, hoja de datos o pinout: extrae los datos útiles (pines, voltajes, direcciones I2C) y úsalos.
+  - Boceto o foto de una interfaz: puedes construir esa interfaz en la app Python.
+  - Cualquier otra imagen: descríbela con detalle y responde a lo que pide el usuario.
+  - Si algo no se distingue bien (cable tapado, foto borrosa), dilo y pide una foto más cercana de esa parte, pero analiza todo lo que sí se ve.
+- Responde en el mismo idioma en que te escribe el usuario (español o inglés), claro y directo. Explica brevemente qué cambiaste y por qué.
 - Si falta información real que no puedes deducir (ej. qué sensor exacto usa), asume lo más común, dilo, y avanza.
 
 ## Cómo editar archivos (IMPORTANTE)
@@ -75,7 +86,7 @@ contenido completo del archivo
 
 ## Estado actual del IDE
 - Proyecto: ${cfg.name || ''}
-- Placa: ${board.name} (FQBN ${board.fqbn}) — capacidades: ${board.features.join(', ') || 'n/d'}
+${cfg.arduino === false ? '- ESTE PROYECTO ES SOLO DE PYTHON (Arduino desactivado): no escribas sketches de Arduino, no hables de la placa ni del puerto serie salvo que el usuario lo pida; si lo pide, sugiérele activar Arduino en Configuración → Proyecto.\n' : ''}- Placa: ${board.name} (FQBN ${board.fqbn}) — capacidades: ${board.features.join(', ') || 'n/d'}
 - Puerto: ${cfg.port || 'sin seleccionar'} | Baudios configurados: ${cfg.baud || 9600}
 - Archivo activo: ${live.activeFile || 'ninguno'}${live.cursorLine ? ` (cursor en línea ${live.cursorLine})` : ''}
 - Pestañas abiertas: ${(live.openFiles || []).join(', ') || 'ninguna'}
@@ -84,7 +95,11 @@ ${live.buildLog ? `\n### Última salida de compilación/subida\n\`\`\`\n${tail(l
 ${live.pythonLog ? `\n### Última salida del programa Python\n\`\`\`\n${tail(live.pythonLog, 4000)}\n\`\`\`` : ''}
 ${live.simLog ? `\n### Salida serie del SIMULADOR (Arduino Uno emulado)\n\`\`\`\n${tail(live.simLog, 2500)}\n\`\`\`` : ''}
 ${live.serialLog ? `\n### Últimos datos del monitor serie\n\`\`\`\n${tail(live.serialLog, 2500)}\n\`\`\`` : ''}
-
+${wiringText ? `
+## Conexiones del editor visual (lo que el usuario cableó: respétalo al escribir el sketch)
+${wiringText}${wiringWarn.length ? `
+Avisos: ${wiringWarn.join(' | ')}` : ''}
+` : ''}
 ## Memoria del proyecto
 ${memory || '(vacía todavía — créala cuando entiendas el objetivo del proyecto)'}
 
@@ -95,23 +110,33 @@ ${fileDump || '(sin archivos)'}
 
 function toContents(root, history) {
   const msgs = history.filter((m) => (m.text || (m.images && m.images.length)) && (m.role === 'user' || m.role === 'model')).slice(-MAX_HISTORY);
-  // solo se reenvían las imágenes más recientes
-  const withImages = new Set();
-  for (let i = msgs.length - 1, n = 0; i >= 0 && n < MAX_IMAGES; i--) {
-    if (msgs[i].images && msgs[i].images.length) { withImages.add(i); n += msgs[i].images.length; }
+  // El último mensaje con imágenes las envía TODAS; de los anteriores, solo las más recientes.
+  const send = new Map(); // índice de mensaje -> cuántas imágenes se envían
+  let lastWithImages = -1;
+  for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].images && msgs[i].images.length) { lastWithImages = i; break; }
+  if (lastWithImages >= 0) send.set(lastWithImages, Math.min(MAX_IMAGES_NOW, msgs[lastWithImages].images.length));
+  for (let i = lastWithImages - 1, n = 0; i >= 0 && n < MAX_IMAGES_OLD; i--) {
+    const k = (msgs[i].images || []).length;
+    if (k) { const take = Math.min(k, MAX_IMAGES_OLD - n); send.set(i, take); n += take; }
   }
   const contents = [];
   msgs.forEach((m, i) => {
     const parts = [];
-    if (withImages.has(i)) {
-      for (const name of m.images) {
+    const imgs = m.images || [];
+    const take = send.get(i) || 0;
+    if (take) {
+      const list = imgs.slice(-take);
+      if (list.length > 1) parts.push({ text: `[El usuario adjuntó ${list.length} imágenes. Analiza CADA una por separado, en orden: Imagen 1, Imagen 2…]` });
+      list.forEach((name, k) => {
         try {
           const img = project.readImage(root, name);
+          if (list.length > 1) parts.push({ text: `Imagen ${k + 1} de ${list.length}:` });
           parts.push({ inlineData: { mimeType: img.mime, data: img.data } });
         } catch {}
-      }
-    } else if (m.images && m.images.length) {
-      parts.push({ text: `[el usuario adjuntó ${m.images.length} imagen(es) antes]` });
+      });
+      if (imgs.length > take) parts.push({ text: `[${imgs.length - take} imagen(es) más de este mensaje no se reenviaron]` });
+    } else if (imgs.length) {
+      parts.push({ text: `[en este mensaje el usuario adjuntó ${imgs.length} imagen(es), ya analizadas antes]` });
     }
     if (m.text) parts.push({ text: m.text });
     const last = contents[contents.length - 1];

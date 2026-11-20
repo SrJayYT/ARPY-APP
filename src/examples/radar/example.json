@@ -1,0 +1,18 @@
+{
+  "title": "Radar ultrasónico",
+  "description": "Un servo barre el sensor HC-SR04 y envía ángulo y distancia. Míralo en la pestaña Gráfica.",
+  "level": "Intermedio",
+  "tags": ["Servo", "HC-SR04", "Gráfica"],
+  "board": "arduino:avr:uno",
+  "baud": 115200,
+  "app": false,
+  "accent": "#4b8bbe",
+  "libs": ["Servo"],
+  "wiring": {
+    "version": 1,
+    "parts": [
+      { "id": "servo", "type": "servo", "label": "Servo del radar", "x": 60, "y": 60, "pins": { "sig": "D9", "vcc": "5V", "gnd": "GND" } },
+      { "id": "sonar", "type": "hcsr04", "label": "Sensor HC-SR04", "x": 900, "y": 60, "pins": { "trig": "D7", "echo": "D6", "vcc": "5V", "gnd": "GND" } }
+    ]
+  }
+}

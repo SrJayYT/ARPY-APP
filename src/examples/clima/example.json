@@ -1,0 +1,19 @@
+{
+  "title": "Estación del clima",
+  "description": "Temperatura, humedad y luz en una ficha de almanaque, con gráfico y registro CSV.",
+  "level": "Intermedio",
+  "tags": ["DHT11", "LDR"],
+  "board": "arduino:avr:uno",
+  "baud": 115200,
+  "app": true,
+  "accent": "#F3EEE4",
+  "libs": ["DHT sensor library"],
+  "requirements": "pyserial\n",
+  "wiring": {
+    "version": 1,
+    "parts": [
+      { "id": "dht", "type": "dht", "label": "Sensor DHT11", "x": 60, "y": 60, "pins": { "data": "D2", "vcc": "5V", "gnd": "GND" } },
+      { "id": "ldr", "type": "ldr", "label": "Sensor de luz", "x": 900, "y": 300, "pins": { "sig": "A0", "vcc": "5V", "gnd": "GND" } }
+    ]
+  }
+}

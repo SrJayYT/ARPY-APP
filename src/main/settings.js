@@ -12,6 +12,8 @@ const DEFAULTS = {
   recentProjects: [],
   lastProject: '',
   perfMode: 'auto', // auto | lite | full
+  lang: 'en', // idioma de la interfaz: en | es
+  wizardDone: false,
   intro: true,
 };
 

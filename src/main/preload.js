@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
-const PREFIXES = ['settings:', 'status', 'open-external', 'project:', 'fs:', 'arduino:', 'python:', 'serial:', 'ai:', 'search:', 'git:', 'dialog:', 'sim:'];
+const PREFIXES = ['settings:', 'status', 'open-external', 'project:', 'fs:', 'arduino:', 'python:', 'serial:', 'ai:', 'search:', 'git:', 'dialog:', 'sim:', 'drivers:', 'app:', 'wiring:', 'ui:', 'update:', 'examples:'];
 const allowed = (c) => PREFIXES.some((p) => c === p || c.startsWith(p));
 const EVENTS = ['log', 'serial:data', 'serial:closed', 'python:exit', 'ai:chunk', 'ai:status', 'fs:changed', 'sim:state', 'app:open-file'];
 

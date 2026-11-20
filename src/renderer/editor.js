@@ -318,6 +318,7 @@
 
   async function open(path, { line } = {}) {
     if (!editor) return;
+    if (preview) { A.livediff && A.livediff.dismiss(); endPreview(); }
     if (active && tabs.has(active)) tabs.get(active).viewState = editor.saveViewState();
     if (!tabs.has(path)) {
       let content;
@@ -378,6 +379,106 @@
       const t = tabs.get(p);
       if (t.model.getAlternativeVersionId() !== t.saved) await save(p);
     }
+  }
+
+  // ---------- vista en vivo de las ediciones de la IA ----------
+  let preview = null; // { path, model, decos, actions }
+
+  function contentOf(path) {
+    const t = tabs.get(path);
+    return t ? t.model.getValue() : null;
+  }
+
+  // marks: [{ line, t: 'add'|'del'|'pend' }]
+  function livePreview(path, text, marks, revealLine, info) {
+    if (!editor) return;
+    if (!preview || preview.path !== path) {
+      if (preview) preview.model.dispose();
+      else if (active && tabs.has(active)) tabs.get(active).viewState = editor.saveViewState();
+      const model = monaco.editor.createModel(text, A.langOf(path), monaco.Uri.parse(`arpy-live:///${Date.now()}/${path}`));
+      model.updateOptions({ tabSize: path.endsWith('.py') ? 4 : 2 });
+      preview = { path, model, decos: [], actions: null };
+      editor.setModel(model);
+      editor.updateOptions({ readOnly: true });
+      A.$('#emptyEditor').classList.add('hidden');
+    } else if (preview.model.getValue() !== text) {
+      // reemplazo completo sin perder la posición de desplazamiento
+      preview.model.applyEdits([{ range: preview.model.getFullModelRange(), text }]);
+    }
+    if (editor.getModel() !== preview.model) editor.setModel(preview.model);
+    const m = preview.model;
+    preview.decos = editor.deltaDecorations(preview.decos, marks.filter((k) => k.line <= m.getLineCount()).map((k) => ({
+      range: new monaco.Range(k.line, 1, k.line, m.getLineMaxColumn(k.line)),
+      options: { isWholeLine: true, className: 'ld-' + k.t, inlineClassName: 'ld-txt-' + k.t, linesDecorationsClassName: 'ld-g-' + k.t },
+    })));
+    if (revealLine) editor.revealLineInCenterIfOutsideViewport(revealLine);
+    preview.info = info;
+    previewBanner(info);
+  }
+
+  function previewBanner(info) {
+    let b = A.$('#liveBanner');
+    if (!b) {
+      b = A.el('div', { id: 'liveBanner', class: 'live-banner' });
+      A.$('#editorWrap').append(b);
+    }
+    b.classList.toggle('done', !info.partial);
+    b.innerHTML = '';
+    b.append(A.el('span', { class: 'lb-dot' }),
+      A.el('span', {}, info.partial ? (info.isNew ? 'La IA está creando ' : 'La IA está editando ') : 'Cambios propuestos en '),
+      A.el('b', {}, preview.path),
+      A.el('span', { class: 'lb-stats' }, A.el('span', { class: 'add' }, `+${info.add}`), ' ', A.el('span', { class: 'rem' }, `−${info.del}`)));
+    if (preview.actions) {
+      const ok = A.el('button', { class: 'btn sm ino', onclick: async () => { ok.disabled = true; await preview.actions.apply(); } });
+      ok.innerHTML = A.icon('check') + 'Aplicar';
+      b.append(A.el('span', { class: 'spacer' }), A.el('button', { class: 'btn sm ghost', onclick: () => preview.actions.discard() }, 'Descartar'), ok);
+    }
+  }
+
+  function previewActions(actions) {
+    if (!preview) return;
+    preview.actions = actions;
+    previewBanner({ ...(preview.info || { add: 0, del: 0 }), partial: false });
+  }
+
+  function endPreview() {
+    const b = A.$('#liveBanner');
+    if (b) b.remove();
+    if (!preview) return;
+    const p = preview;
+    preview = null;
+    editor.updateOptions({ readOnly: false });
+    if (active && tabs.has(active)) {
+      const t = tabs.get(active);
+      editor.setModel(t.model);
+      if (t.viewState) editor.restoreViewState(t.viewState);
+    } else editor.setModel(null);
+    p.model.dispose();
+    renderTabs();
+  }
+
+  // Tras aplicar: resalta en el archivo real lo que se agregó (verde) y dónde se quitó (marca roja).
+  async function highlightChanges(path, ops) {
+    await open(path);
+    const t = tabs.get(path);
+    if (!t) return;
+    const decos = [];
+    let line = 0;
+    let first = 0;
+    for (const o of ops) {
+      if (o.t === 'eq' || o.t === 'add') line++;
+      if (o.t === 'add') {
+        if (!first) first = line;
+        decos.push({ range: new monaco.Range(line, 1, line, 1), options: { isWholeLine: true, className: 'ld-add ld-fade', linesDecorationsClassName: 'ld-g-add' } });
+      } else if (o.t === 'del') {
+        const at = Math.max(1, Math.min(line + 1, t.model.getLineCount()));
+        if (!first) first = at;
+        decos.push({ range: new monaco.Range(at, 1, at, 1), options: { isWholeLine: true, linesDecorationsClassName: 'ld-g-delmark' } });
+      }
+    }
+    if (first) editor.revealLineInCenterIfOutsideViewport(first);
+    const ids = t.model.deltaDecorations([], decos);
+    setTimeout(() => { if (!t.model.isDisposed()) t.model.deltaDecorations(ids, []); }, 6000);
   }
 
   // Aplica contenido nuevo a un archivo (desde la IA) manteniendo Ctrl+Z.
@@ -481,7 +582,8 @@
 
   A.editor = {
     initMonaco, open, close, closeAll, save, saveAll, applyContent, syncFromDisk, renamed,
-    liveContext, setMarkers, showDiff, setFontSize, setTheme, setLite, breakpoints, toggleBreakpoint,
+    liveContext, setMarkers, showDiff, setFontSize, setTheme, setLite,
+    contentOf, livePreview, previewActions, endPreview, highlightChanges, get previewing() { return !!preview; }, breakpoints, toggleBreakpoint,
     setAiComplete: (on) => { aiCompleteOn = !!on; },
     get active() { return active; },
     isOpen: (p) => tabs.has(p),

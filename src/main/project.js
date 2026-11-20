@@ -70,7 +70,8 @@ function adopt(root) {
   const py = walk(root).find((f) => f.endsWith('.py'));
   return writeConfig(root, {
     name: path.basename(root),
-    board: 'arduino:avr:uno',
+    arduino: !!ino, // carpeta sin .ino → proyecto solo de Python
+    board: ino ? 'arduino:avr:uno' : '',
     port: '',
     baud: 9600,
     sketch: ino ? path.dirname(ino) || '.' : 'sketch',
@@ -286,22 +287,108 @@ BAUD = int(os.environ.get("ARPY_BAUD", "9600"))
 print("Hola desde Python. Puerto del Arduino:", PORT)
 `,
   },
+
+  // ---- Proyectos solo de Python (sin Arduino) ----
+  'py-script': {
+    pythonOnly: true,
+    req: '',
+    py: `"""Script de Python. Ejecútalo con F5; la salida aparece en la pestaña Python."""
+
+
+def main():
+    nombre = input("¿Cómo te llamas? ")
+    print(f"Hola, {nombre}. Este es tu proyecto de Python.")
+
+
+if __name__ == "__main__":
+    main()
+`,
+  },
+  'py-tk': {
+    pythonOnly: true,
+    req: '',
+    py: `"""App de escritorio con Tkinter (incluido en Python, no necesita instalar nada)."""
+import tkinter as tk
+
+FONDO, TEXTO, ACENTO = "#F3EEE4", "#2B2A28", "#C8553D"
+
+
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Mi app")
+        self.geometry("420x260")
+        self.configure(bg=FONDO)
+        self.clics = 0
+        tk.Label(self, text="Mi app", bg=FONDO, fg=TEXTO, font=("Georgia", 22)).pack(pady=(28, 6))
+        self.estado = tk.Label(self, text="Todavía no has pulsado el botón.", bg=FONDO, fg="#8A8378", font=("Segoe UI", 11))
+        self.estado.pack()
+        tk.Button(self, text="Púlsame", command=self.pulsar, bg=ACENTO, fg="white", relief="flat",
+                  activebackground=TEXTO, activeforeground=FONDO, font=("Segoe UI", 11, "bold"),
+                  padx=18, pady=8, cursor="hand2").pack(pady=22)
+
+    def pulsar(self):
+        self.clics += 1
+        self.estado.config(text=f"Pulsado {self.clics} {'vez' if self.clics == 1 else 'veces'}.")
+
+
+if __name__ == "__main__":
+    App().mainloop()
+`,
+  },
+  'py-web': {
+    pythonOnly: true,
+    req: 'flask\n',
+    py: `"""Página web con Flask. Ejecútala y abre http://localhost:5000 en el navegador."""
+from flask import Flask  # pip install flask
+
+app = Flask(__name__)
+visitas = 0
+
+
+@app.get("/")
+def inicio():
+    global visitas
+    visitas += 1
+    return f"""<!doctype html><html lang="es"><meta charset="utf-8">
+<title>Mi web</title>
+<body style="font-family:system-ui;background:#f3eee4;color:#2b2a28;display:grid;place-items:center;height:100vh;margin:0">
+<div style="text-align:center"><h1>Hola desde Flask</h1><p>Visitas: {visitas}</p></div></body></html>"""
+
+
+if __name__ == "__main__":
+    print("Abre http://localhost:5000")
+    app.run(port=5000)
+`,
+  },
+  'py-empty': {
+    pythonOnly: true,
+    req: '',
+    py: `print("Hola desde Python")
+`,
+  },
 };
 
-function create(parent, name, template = 'app', board = 'arduino:avr:uno') {
+// arduino: false → proyecto solo de Python (sin sketch ni placa).
+function create(parent, name, template = 'app', board = 'arduino:avr:uno', { arduino = true } = {}) {
   if (!String(name || '').trim()) throw new Error('Nombre inválido');
   const safe = safeName(name);
   const root = path.join(parent, safe);
   if (fs.existsSync(root) && fs.readdirSync(root).length) throw new Error('La carpeta ya existe y no está vacía');
-  const t = TEMPLATES[template] || TEMPLATES.app;
-  fs.mkdirSync(path.join(root, 'sketch'), { recursive: true });
+  let t = TEMPLATES[template] || TEMPLATES.app;
+  if (!arduino && !t.pythonOnly) { template = 'py-script'; t = TEMPLATES['py-script']; }
+  if (arduino && t.pythonOnly) { template = 'app'; t = TEMPLATES.app; }
   fs.mkdirSync(path.join(root, 'python'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'sketch', 'sketch.ino'), t.ino || TEMPLATES.app.ino);
+  if (arduino) {
+    fs.mkdirSync(path.join(root, 'sketch'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'sketch', 'sketch.ino'), t.ino || TEMPLATES.app.ino);
+  }
   fs.writeFileSync(path.join(root, 'python', 'main.py'), t.py);
-  fs.writeFileSync(path.join(root, 'python', 'requirements.txt'), t.req || 'pyserial\n');
+  fs.writeFileSync(path.join(root, 'python', 'requirements.txt'), t.req ?? 'pyserial\n');
   writeConfig(root, {
     name: String(name).trim(),
-    board,
+    arduino,
+    board: arduino ? board : '',
     port: '',
     baud: ['app', 'ctk', 'web'].includes(template) ? 115200 : 9600,
     venv: true,
@@ -311,6 +398,30 @@ function create(parent, name, template = 'app', board = 'arduino:avr:uno') {
     created: new Date().toISOString(),
   });
   return root;
+}
+
+// ---- Conexiones del editor visual (.arpy/wiring.json) ----
+function loadWiring(root) {
+  try { return JSON.parse(fs.readFileSync(path.join(root, '.arpy', 'wiring.json'), 'utf8')); } catch { return null; }
+}
+function saveWiring(root, w) {
+  fs.mkdirSync(path.join(root, '.arpy'), { recursive: true });
+  fs.writeFileSync(path.join(root, '.arpy', 'wiring.json'), JSON.stringify(w, null, 2));
+  return true;
+}
+
+// ---- Diseños de interfaces Python (.arpy/ui/<archivo>.json) ----
+function uiDir(root) { return path.join(root, '.arpy', 'ui'); }
+function listUI(root) {
+  try { return fs.readdirSync(uiDir(root)).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -5)); } catch { return []; }
+}
+function loadUI(root, file) {
+  try { return JSON.parse(fs.readFileSync(path.join(uiDir(root), safeName(file) + '.json'), 'utf8')); } catch { return null; }
+}
+function saveUI(root, design) {
+  fs.mkdirSync(uiDir(root), { recursive: true });
+  fs.writeFileSync(path.join(uiDir(root), safeName(design.file || 'panel') + '.json'), JSON.stringify(design, null, 2));
+  return true;
 }
 
 // ---- Datos de la IA por proyecto (.arpy/) ----
@@ -354,6 +465,14 @@ function loadChat(root, id) {
   try { return JSON.parse(fs.readFileSync(path.join(chatsDir(root), safeId(id) + '.json'), 'utf8')); } catch { return []; }
 }
 
+// Conversación que estaba abierta la última vez en ESTE proyecto.
+function getActiveChat(root) {
+  try { return fs.readFileSync(path.join(chatsDir(root), 'active.txt'), 'utf8').trim() || null; } catch { return null; }
+}
+function setActiveChat(root, id) {
+  fs.writeFileSync(path.join(chatsDir(root), 'active.txt'), safeId(id));
+  return true;
+}
 function saveChat(root, id, messages, title) {
   const d = chatsDir(root);
   fs.writeFileSync(path.join(d, safeId(id) + '.json'), JSON.stringify(messages, null, 1));
@@ -420,7 +539,7 @@ function restore(root, id) {
 }
 
 module.exports = {
-  projectFile,
+  projectFile, loadWiring, saveWiring, getActiveChat, setActiveChat, listUI, loadUI, saveUI,
   info,
   resolveIn, readConfig, writeConfig, isProject, adopt, tree, snapshot, create,
   listChats, loadChat, saveChat, deleteChat, saveImage, readImage, loadMemory, saveMemory, backup, readBackup, restore, isText,

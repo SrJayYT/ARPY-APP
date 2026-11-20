@@ -7,6 +7,8 @@
   <title>ARPY Copiler</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="intro.js"></script>
+  <script src="../shared/i18n-en.js"></script>
+  <script src="i18n.js"></script>
 </head>
 <body>
   <div id="intro" aria-hidden="true">
@@ -46,7 +48,7 @@
   <div id="app">
     <header id="toolbar">
       <div class="brand"><span class="logo"></span>ARPY<b>Copiler</b></div>
-      <div class="tb-group">
+      <div class="tb-group ard-only">
         <label class="sel" title="Placa">
           <span class="ico" data-icon="cpu"></span>
           <select id="boardSelect"></select>
@@ -56,15 +58,20 @@
           <select id="portSelect"></select>
         </label>
         <button id="btnRefreshPorts" class="icon-btn" title="Buscar placas conectadas"><span data-icon="refresh"></span></button>
+        <button id="btnPortHelp" class="icon-btn" title="¿No aparece tu placa? Revisar drivers"><span data-icon="help"></span></button>
       </div>
-      <div class="tb-group">
+      <div class="tb-group ard-only">
         <button id="btnVerify" class="btn" title="Verificar / compilar (Ctrl+R)"><span data-icon="check"></span>Verificar</button>
         <button id="btnUpload" class="btn ino" title="Compilar y subir a la placa (Ctrl+U)"><span data-icon="upload"></span>Subir</button>
       </div>
       <div class="tb-group">
         <button id="btnRunPy" class="btn py" title="Ejecutar Python (F5)"><span data-icon="play"></span>Python</button>
         <button id="btnStopPy" class="icon-btn" title="Detener Python (Shift+F5)" disabled><span data-icon="stop"></span></button>
-        <button id="btnRunAll" class="btn all" title="Subir sketch y luego ejecutar Python (Ctrl+F5)"><span data-icon="zap"></span>Subir + Ejecutar</button>
+        <button id="btnRunAll" class="btn all ard-only" title="Subir sketch y luego ejecutar Python (Ctrl+F5)"><span data-icon="zap"></span>Subir + Ejecutar</button>
+      </div>
+      <div class="tb-group">
+        <button id="btnWiring" class="btn ghost ard-only" title="Editor visual de conexiones: coloca sensores y LEDs sobre la placa"><span data-icon="cable"></span>Conexiones</button>
+        <button id="btnDesigner" class="btn ghost" title="Diseñador de interfaces Python: arrastra botones y gráficas"><span data-icon="layout"></span>Diseñar app</button>
       </div>
       <div class="spacer"></div>
       <button id="btnSaveVersion" class="icon-btn has-dot" title="Guardar una versión del proyecto (Ctrl+Shift+S)"><span data-icon="gitCommit"></span><i id="gitDot" class="dot"></i></button>
@@ -82,12 +89,13 @@
           <div class="side-actions">
             <button class="icon-btn sm" id="btnNewFile" title="Nuevo archivo"><span data-icon="filePlus"></span></button>
             <button class="icon-btn sm" id="btnNewFolder" title="Nueva carpeta"><span data-icon="folderPlus"></span></button>
+            <button class="icon-btn sm" id="btnExportProject" title="Exportar proyecto (.zip) para compartirlo"><span data-icon="archive"></span></button>
             <button class="icon-btn sm" id="btnRevealProject" title="Abrir carpeta en el explorador"><span data-icon="folder"></span></button>
             <button class="icon-btn sm" id="btnCloseProject" title="Cerrar proyecto"><span data-icon="x"></span></button>
           </div>
         </div>
         <div id="tree"></div>
-        <div id="boardCard"></div>
+        <div id="boardCard" class="ard-only"></div>
       </aside>
       <div class="gutter v" data-target="sidebar"></div>
 
@@ -106,7 +114,7 @@
             <button data-panel="plot"><span data-icon="chart"></span>Gráfica</button>
             <button data-panel="problems"><span data-icon="alert"></span>Problemas <b id="problemCount" class="badge">0</b></button>
             <button data-panel="search"><span data-icon="search"></span>Buscar</button>
-            <button data-panel="sim"><span data-icon="cpu"></span>Simulador<i id="simDot" class="dot"></i></button>
+            <button data-panel="sim" class="ard-only"><span data-icon="cpu"></span>Simulador<i id="simDot" class="dot"></i></button>
             <div class="spacer"></div>
             <button id="btnFixWithAI" class="ai-mini hidden" title="Pedir a la IA que corrija el error"><span data-icon="sparkles"></span>Corregir con IA</button>
             <button id="btnClearPanel" class="icon-btn sm" title="Limpiar"><span data-icon="trash"></span></button>
@@ -130,6 +138,7 @@
               <div class="spacer"></div>
               <button id="btnSerialCsv" class="btn sm ghost" title="Guardar los datos recibidos como CSV">Guardar CSV</button>
             </div>
+            <div id="serialConns" class="serial-conns hidden"></div>
             <pre id="serialLog" class="log"></pre>
             <div class="input-row"><input id="serialInput" placeholder="Enviar al Arduino… (Enter)" /></div>
           </div>
@@ -170,12 +179,14 @@
           <div class="panel" id="panel-sim">
             <div class="panel-bar">
               <button id="btnSim" class="btn sm ino"><span data-icon="play"></span>Simular</button>
-              <span class="muted">Emula un Arduino Uno (ATmega328P): pines, PWM, entradas analógicas y puerto serie. Sin placa conectada.</span>
+              <span class="muted">Emula un Arduino Uno o Nano (ATmega328P): pines, PWM, entradas analógicas, puerto serie y tus componentes. Sin placa conectada.</span>
               <div class="spacer"></div>
               <span id="simTime" class="muted"></span>
             </div>
             <div class="sim-body">
               <div class="sim-board">
+                <div class="sim-title">Componentes <button id="btnSimWiring" class="linkish">editar conexiones</button></div>
+                <div id="simParts" class="sim-parts" data-empty="Añade componentes en Conexiones para verlos aquí (LEDs, pulsadores, servos, potenciómetros…)."></div>
                 <div class="sim-title">Pines digitales</div>
                 <div id="simPins" class="sim-pins"></div>
                 <div class="sim-title">Entradas analógicas (arrastra para simular un sensor)</div>
@@ -204,6 +215,7 @@
         </div>
         <div id="ctxBar" class="ctx-bar"></div>
         <div id="messages"></div>
+        <div id="offlineBanner" class="offline-banner hidden"><span data-icon="wifiOff"></span><div><b>Sin conexión a internet</b><small>El chat de IA está en pausa. Se reactiva solo cuando vuelva la conexión.</small></div></div>
         <div class="chat-input">
           <div id="chips" class="chips"></div>
           <div id="pendingImages" class="pending-images hidden"></div>
@@ -223,8 +235,8 @@
     </main>
 
     <footer id="statusbar">
-      <span id="stBoard"></span>
-      <span id="stPort"></span>
+      <span id="stBoard" class="ard-only"></span>
+      <span id="stPort" class="ard-only"></span>
       <span id="stCli"></span>
       <span id="stPy"></span>
       <div class="spacer"></div>
@@ -243,6 +255,7 @@
       <div class="welcome-tabs" role="tablist">
         <button data-w="open" class="active"><span data-icon="folder"></span>Abrir proyecto</button>
         <button data-w="new"><span data-icon="folderPlus"></span>Nuevo proyecto</button>
+        <button data-w="examples"><span data-icon="lightbulb"></span>Ejemplos</button>
       </div>
 
       <section class="welcome-pane" data-pane="open">
@@ -253,7 +266,11 @@
           </button>
           <button id="btnImport" class="open-big ghost">
             <span class="ob-icon" data-icon="folder"></span>
-            <span><b>Importar carpeta…</b><small>Sketch de Arduino IDE o scripts Python (se crea su .arpy)</small></span>
+            <span><b>Importar carpeta…</b><small>Sketch de Arduino IDE o scripts Python</small></span>
+          </button>
+          <button id="btnImportZip" class="open-big ghost">
+            <span class="ob-icon" data-icon="archive"></span>
+            <span><b>Importar .zip…</b><small>Proyecto que alguien te compartió</small></span>
           </button>
         </div>
         <div class="recent-head">
@@ -272,26 +289,37 @@
               <div class="row"><input id="newFolder" readonly /><button id="btnPickFolder" class="btn ghost">Cambiar…</button></div>
             </label>
             <div class="new-preview" id="newPreview"></div>
-            <label class="wf"><span>Placa</span><select id="newBoard"></select></label>
+            <label class="wf-switch"><input type="checkbox" id="newArduino" checked /><span class="sw"></span><span><b>Usa una placa Arduino</b><small>Desactívalo para un proyecto solo de Python</small></span></label>
+            <label class="wf" id="newBoardField"><span>Placa</span><select id="newBoard"></select></label>
             <button id="btnCreate" class="btn ino wide">Crear proyecto</button>
           </div>
           <div class="new-tpl">
             <span class="wf-label">Plantilla</span>
             <div class="templates" id="newTemplate">
-              <button data-t="app" class="active"><b>Arduino + App Python</b><small>Sensor en vivo y control del LED desde una ventana</small></button>
-              <button data-t="blink"><b>Blink + lector serie</b><small>Lo básico para empezar</small></button>
-              <button data-t="ctk"><b>Panel moderno (CustomTkinter)</b><small>Gráfica en vivo y controles con estilo actual</small></button>
-              <button data-t="web"><b>Panel web (Flask)</b><small>Controla el Arduino desde el navegador o el celular</small></button>
-              <button data-t="empty"><b>Vacío</b><small>Esqueleto mínimo</small></button>
+              <button data-t="app" data-mode="ard" class="active"><b>Arduino + App Python</b><small>Sensor en vivo y control del LED desde una ventana</small></button>
+              <button data-t="blink" data-mode="ard"><b>Blink + lector serie</b><small>Lo básico para empezar</small></button>
+              <button data-t="ctk" data-mode="ard"><b>Panel moderno (CustomTkinter)</b><small>Gráfica en vivo y controles con estilo actual</small></button>
+              <button data-t="web" data-mode="ard"><b>Panel web (Flask)</b><small>Controla el Arduino desde el navegador o el celular</small></button>
+              <button data-t="empty" data-mode="ard"><b>Vacío</b><small>Esqueleto mínimo</small></button>
+              <button data-t="py-script" data-mode="py"><b>Script de Python</b><small>Programa de consola que pide datos y responde</small></button>
+              <button data-t="py-tk" data-mode="py"><b>App de escritorio (Tkinter)</b><small>Ventana con un botón, lista para crecer</small></button>
+              <button data-t="py-web" data-mode="py"><b>Página web (Flask)</b><small>Servidor web pequeño que se abre en el navegador</small></button>
+              <button data-t="py-empty" data-mode="py"><b>Vacío</b><small>Solo un archivo main.py</small></button>
             </div>
           </div>
         </div>
+      </section>
+
+      <section class="welcome-pane hidden" data-pane="examples">
+        <div class="ex-filter" id="exFilter"></div>
+        <div id="exampleList" class="example-list"></div>
       </section>
 
       <div id="envStatus" class="env-status"></div>
     </div>
   </div>
 
+  <div id="updateBanner" class="update-banner hidden"></div>
   <div id="modal" class="hidden"><div class="modal-card"><div class="modal-head"><h3 id="modalTitle"></h3><button class="icon-btn sm" id="modalClose"><span data-icon="x"></span></button></div><div id="modalBody"></div></div></div>
   <div id="ctxMenu" class="hidden"></div>
   <div id="toasts"></div>
@@ -299,12 +327,19 @@
   <script src="../../node_modules/marked/lib/marked.umd.js"></script>
   <script src="../../node_modules/dompurify/dist/purify.js"></script>
   <script src="../shared/boards.js"></script>
+  <script src="../shared/parts.js"></script>
+  <script src="../shared/uigen.js"></script>
   <script src="util.js"></script>
   <script src="editor.js"></script>
   <script src="explorer.js"></script>
   <script src="panels.js"></script>
   <script src="chat.js"></script>
+  <script src="livediff.js"></script>
   <script src="sim.js"></script>
+  <script src="features.js"></script>
+  <script src="wiring.js"></script>
+  <script src="designer.js"></script>
+  <script src="wizard.js"></script>
   <script src="app.js"></script>
   <script src="../../node_modules/monaco-editor/min/vs/loader.js"></script>
   <script src="boot.js"></script>

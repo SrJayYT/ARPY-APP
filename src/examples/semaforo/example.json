@@ -1,0 +1,19 @@
+{
+  "title": "Semáforo con botón peatonal",
+  "description": "Tres LEDs y un pulsador. Funciona entero en el simulador, sin placa.",
+  "level": "Principiante",
+  "tags": ["LEDs", "Pulsador", "Simulable"],
+  "board": "arduino:avr:uno",
+  "baud": 9600,
+  "app": false,
+  "accent": "#3ccf91",
+  "wiring": {
+    "version": 1,
+    "parts": [
+      { "id": "rojo", "type": "led", "label": "LED rojo", "color": "#ff4d4d", "x": 60, "y": 40, "pins": { "anode": "D10", "cathode": "GND" } },
+      { "id": "amarillo", "type": "led", "label": "LED amarillo", "color": "#f2c94c", "x": 60, "y": 180, "pins": { "anode": "D9", "cathode": "GND" } },
+      { "id": "verde", "type": "led", "label": "LED verde", "color": "#3ccf91", "x": 60, "y": 320, "pins": { "anode": "D8", "cathode": "GND" } },
+      { "id": "boton", "type": "button", "label": "Botón peatonal", "x": 900, "y": 80, "pins": { "sig": "D2", "gnd": "GND" } }
+    ]
+  }
+}

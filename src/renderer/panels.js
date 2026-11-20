@@ -17,7 +17,7 @@
   A.$('#btnClearPanel').addEventListener('click', () => {
     if (current === 'output') { A.$('#outputLog').innerHTML = ''; raw.build = ''; }
     if (current === 'python') { A.$('#pythonLog').innerHTML = ''; raw.python = ''; }
-    if (current === 'serial') { A.$('#serialLog').innerHTML = ''; raw.serial = ''; }
+    if (current === 'serial') { A.$('#serialLog').innerHTML = ''; raw.serial = ''; const c = conns.get(active); if (c) { c.chunks = []; c.size = 0; c.raw = ''; } }
     if (current === 'plot') { series.clear(); drawPlot(); }
   });
 
@@ -138,85 +138,159 @@
     A.chat.send(`Hay errores. Analízalos (tienes la salida completa en el contexto) y corrígelos en los archivos:\n${desc}`);
   });
 
-  // ---------- monitor serie ----------
+  // ---------- monitor serie (una pestaña por placa conectada) ----------
   const BAUDS = [300, 1200, 2400, 4800, 9600, 19200, 38400, 57600, 74880, 115200, 230400, 250000, 500000, 1000000, 2000000];
   const baudSel = A.$('#baudSelect');
   BAUDS.forEach((b) => baudSel.append(A.el('option', { value: b }, `${b} baudios`)));
-  let serialOpen = false;
-  let partial = '';
-  let lineStart = true;
+  const conns = new Map(); // path -> { path, baud, chunks: [{t, cls}], size, lineStart, partial, raw }
+  let active = null;
+  const CMAX = 100000;
+  const projectPort = () => (A.app && A.app.config && A.app.config.port) || '';
 
-  function setSerialState(open) {
-    serialOpen = open;
+  function conn(path) {
+    if (!conns.has(path)) conns.set(path, { path, baud: +baudSel.value, chunks: [], size: 0, lineStart: true, partial: '', raw: '' });
+    return conns.get(path);
+  }
+
+  function push(c, t, cls = '') {
+    c.chunks.push({ t, cls });
+    c.size += t.length;
+    while (c.size > CMAX && c.chunks.length > 1) c.size -= c.chunks.shift().t.length;
+    if (c.path !== active) return;
+    const pre = A.$('#serialLog');
+    pre.append(cls ? A.el('span', { class: cls }, t) : document.createTextNode(t));
+    while (pre.textContent.length > CMAX && pre.firstChild) pre.firstChild.remove();
+    if (A.$('#serialAutoscroll').checked) pre.scrollTop = pre.scrollHeight;
+  }
+
+  function showConn(path) {
+    active = path;
+    const pre = A.$('#serialLog');
+    pre.innerHTML = '';
+    const c = conns.get(path);
+    if (c) {
+      for (const ch of c.chunks) pre.append(ch.cls ? A.el('span', { class: ch.cls }, ch.t) : document.createTextNode(ch.t));
+      baudSel.value = c.baud;
+    }
+    pre.scrollTop = pre.scrollHeight;
+    renderConns();
+  }
+
+  function renderConns() {
+    const host = A.$('#serialConns');
+    host.innerHTML = '';
+    const pp = projectPort();
+    for (const c of conns.values()) {
+      const x = A.el('span', { class: 'sc-x', title: 'Desconectar', onclick: (e) => { e.stopPropagation(); serialDisconnect(false, c.path); } });
+      x.innerHTML = A.icon('x');
+      host.append(A.el('button', { class: 'sc-tab' + (c.path === active ? ' active' : ''), onclick: () => showConn(c.path), title: `${c.path} @ ${c.baud}` },
+        A.el('i', { class: 'dot on' }), c.path, c.path === pp ? A.el('small', {}, 'proyecto') : null, x));
+    }
+    host.append(A.el('button', { class: 'sc-add', title: 'Abrir otra placa en una pestaña nueva', onclick: addOther }, '+ Otra placa'));
+    host.classList.toggle('hidden', conns.size === 0);
+    const open = conns.has(pp);
     A.$('#btnSerialToggle').textContent = open ? 'Desconectar' : 'Conectar';
     A.$('#btnSerialToggle').classList.toggle('ino', !open);
-    A.$('#serialDot').classList.toggle('on', open);
+    A.$('#serialDot').classList.toggle('on', conns.size > 0);
   }
-  setSerialState(false);
+  renderConns();
 
-  async function serialConnect() {
-    const cfg = A.app.config;
-    if (!cfg || !cfg.port) return A.toast('Selecciona un puerto en la barra superior', 'err');
+  async function serialConnect(path = projectPort(), baud = +baudSel.value) {
+    if (!path) return A.toast('Selecciona un puerto en la barra superior', 'err');
     try {
-      await A.api('serial:open', cfg.port, +baudSel.value);
-      setSerialState(true);
-      serialSys(`Conectado a ${cfg.port} @ ${baudSel.value}`);
+      await A.api('serial:open', path, baud);
+      const c = conn(path);
+      c.baud = baud;
+      active = path;
+      showConn(path);
+      sys(c, `Conectado a ${path} @ ${baud}`);
+      return true;
     } catch (e) {
-      A.toast(`No se pudo abrir ${cfg.port}: ${e.message}`, 'err');
+      A.toast(`No se pudo abrir ${path}: ${e.message}`, 'err');
+      return false;
     }
   }
 
-  async function serialDisconnect(silent) {
-    if (!serialOpen) return false;
-    await A.api('serial:close');
-    setSerialState(false);
-    if (!silent) serialSys('Desconectado');
+  // Cierra la conexión del puerto del proyecto (antes de subir o de ejecutar Python).
+  async function serialDisconnect(silent, path = projectPort()) {
+    if (!conns.has(path)) return false;
+    await A.api('serial:close', path);
+    const c = conns.get(path);
+    if (!silent) sys(c, 'Desconectado');
+    conns.delete(path);
+    if (active === path) showConn(conns.size ? [...conns.keys()][0] : null);
+    else renderConns();
     return true;
   }
 
-  function serialSys(t) {
-    const pre = A.$('#serialLog');
-    pre.append(A.el('span', { class: 'info' }, `${lineStart ? '' : '\n'}— ${t} —\n`));
-    lineStart = true;
-    pre.scrollTop = pre.scrollHeight;
+  async function addOther() {
+    let ports = [];
+    try { ports = await A.api('serial:list'); } catch {}
+    const free = ports.filter((p) => !conns.has(p.address));
+    if (!free.length) return A.toast('No hay otros puertos libres. Conecta otra placa por USB.', 'err');
+    const sel = A.el('select', {}, ...free.map((p) => A.el('option', { value: p.address }, `${p.address}${p.manufacturer ? ' — ' + p.manufacturer : ''}`)));
+    const bd = A.el('select', {}, ...BAUDS.map((b) => A.el('option', { value: b }, `${b} baudios`)));
+    bd.value = baudSel.value;
+    const body = A.el('div', { style: 'display:flex;flex-direction:column;gap:12px' },
+      A.el('div', { class: 'field' }, A.el('label', {}, 'Puerto'), sel),
+      A.el('div', { class: 'field' }, A.el('label', {}, 'Velocidad'), bd),
+      A.el('div', { class: 'modal-foot' }, A.el('button', { class: 'btn ino', onclick: async () => { A.modal.close(); await serialConnect(sel.value, +bd.value); } }, 'Conectar')));
+    A.modal.open('Abrir otra placa', body);
   }
 
-  A.$('#btnSerialToggle').addEventListener('click', () => (serialOpen ? serialDisconnect() : serialConnect()));
+  function sys(c, t) {
+    push(c, `${c.lineStart ? '' : '\n'}— ${t} —\n`, 'info');
+    c.lineStart = true;
+  }
+
+  A.$('#btnSerialToggle').addEventListener('click', () => (conns.has(projectPort()) ? serialDisconnect() : serialConnect()));
   baudSel.addEventListener('change', async () => {
-    A.api('project:config', { baud: +baudSel.value }).then((c) => { A.app.config = c; });
-    if (serialOpen) { await serialDisconnect(true); serialConnect(); }
+    const path = active || projectPort();
+    if (path === projectPort()) A.api('project:config', { baud: +baudSel.value }).then((c) => { A.app.config = c; });
+    if (conns.has(path)) { await A.api('serial:close', path); conns.delete(path); serialConnect(path, +baudSel.value); }
   });
 
-  window.arpy.on('serial:closed', () => { if (serialOpen) { setSerialState(false); serialSys('Puerto cerrado'); } });
-  window.arpy.on('serial:data', (text) => {
-    raw.serial = (raw.serial + text).slice(-20000);
-    const pre = A.$('#serialLog');
+  window.arpy.on('serial:closed', ({ path }) => {
+    const c = conns.get(path);
+    if (!c) return;
+    sys(c, 'Puerto cerrado');
+    conns.delete(path);
+    if (active === path) active = conns.size ? [...conns.keys()][0] : null;
+    renderConns();
+  });
+
+  window.arpy.on('serial:data', ({ path, text }) => {
+    const c = conns.get(path);
+    if (!c) return;
+    c.raw = (c.raw + text).slice(-20000);
+    raw.serial = conns.size > 1
+      ? [...conns.values()].map((x) => `[${x.path}]\n${x.raw.slice(-8000)}`).join('\n')
+      : c.raw;
     const ts = A.$('#serialTimestamps').checked;
     let out = '';
     if (A.$('#serialHex').checked) {
       for (const b of new TextEncoder().encode(text)) {
-        if (lineStart && ts) out += `[${new Date().toLocaleTimeString()}] `;
+        if (c.lineStart && ts) out += `[${new Date().toLocaleTimeString()}] `;
         out += b.toString(16).padStart(2, '0').toUpperCase() + ' ';
-        lineStart = b === 10;
+        c.lineStart = b === 10;
         if (b === 10) out += '\n';
       }
     } else {
       for (const ch of text) {
-        if (lineStart && ts) out += `[${new Date().toLocaleTimeString()}] `;
+        if (c.lineStart && ts) out += `[${new Date().toLocaleTimeString()}] `;
         out += ch;
-        lineStart = ch === '\n';
+        c.lineStart = ch === '\n';
       }
     }
-    pre.append(document.createTextNode(out));
-    while (pre.textContent.length > MAX && pre.firstChild) pre.firstChild.remove();
-    if (A.$('#serialAutoscroll').checked) pre.scrollTop = pre.scrollHeight;
+    push(c, out);
 
-    partial += text;
-    const lines = partial.split(/\r?\n/);
-    partial = lines.pop();
+    c.partial += text;
+    const lines = c.partial.split(/\r?\n/);
+    c.partial = lines.pop();
+    const prefix = conns.size > 1 && path !== projectPort() ? `${path}·` : '';
     for (const l of lines) {
-      if (l.trim()) { csvRows.push([new Date().toISOString(), l]); if (csvRows.length > 200000) csvRows.shift(); }
-      plotLine(l);
+      if (l.trim()) { csvRows.push([new Date().toISOString(), l, path]); if (csvRows.length > 200000) csvRows.shift(); }
+      plotLine(l, prefix);
     }
   });
 
@@ -225,7 +299,7 @@
     simPartial += text;
     const ls = simPartial.split(/\r?\n/);
     simPartial = ls.pop();
-    ls.forEach(plotLine);
+    ls.forEach((l) => plotLine(l));
   }
 
   // ---------- exportar CSV ----------
@@ -233,7 +307,7 @@
   A.$('#btnSerialCsv').addEventListener('click', async () => {
     if (!csvRows.length) return A.toast('Aún no hay datos recibidos', 'err');
     const keys = [];
-    const parsed = csvRows.map(([t, l]) => {
+    const parsed = csvRows.map(([t, l, port]) => {
       const vals = {};
       let idx = 0;
       for (const tok of l.trim().split(/[\s,;\t]+/)) {
@@ -243,10 +317,10 @@
         if (!keys.includes(k)) keys.push(k);
         vals[k] = m[2];
       }
-      return [t, l, vals];
+      return [t, l, vals, port || ''];
     });
     const q = (s) => `"${String(s).replace(/"/g, '""')}"`;
-    const csv = [['tiempo', 'linea', ...keys].join(','), ...parsed.map(([t, l, v]) => [t, q(l), ...keys.map((k) => v[k] ?? '')].join(','))].join('\n');
+    const csv = [['tiempo', 'puerto', 'linea', ...keys].join(','), ...parsed.map(([t, l, v, port]) => [t, port, q(l), ...keys.map((k) => v[k] ?? '')].join(','))].join('\n');
     const file = await A.api('dialog:save-text', `serie-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.csv`, csv);
     if (file) A.toast(`Guardado: ${file}`, 'ok');
   });
@@ -303,10 +377,11 @@
   A.$('#serialInput').addEventListener('keydown', (e) => {
     if (e.key !== 'Enter') return;
     const v = e.target.value;
-    if (!serialOpen) return A.toast('Conecta el monitor serie primero', 'err');
-    A.api('serial:write', v + A.$('#lineEnding').value.replace('\\n', '\n').replace('\\r', '\r'));
-    A.$('#serialLog').append(A.el('span', { class: 'sent' }, `${lineStart ? '' : '\n'}» ${v}\n`));
-    lineStart = true;
+    const c = conns.get(active);
+    if (!c) return A.toast('Conecta el monitor serie primero', 'err');
+    A.api('serial:write', c.path, v + A.$('#lineEnding').value);
+    push(c, `${c.lineStart ? '' : '\n'}» ${v}\n`, 'sent');
+    c.lineStart = true;
     e.target.value = '';
   });
   // los <option value="\n"> llegan como texto literal: normalizamos
@@ -361,13 +436,13 @@
   const N = 300;
   let drawPending = false;
 
-  function plotLine(l) {
+  function plotLine(l, prefix = '') {
     const tokens = l.trim().split(/[\s,;\t]+/).filter(Boolean);
     let idx = 0;
     for (const t of tokens) {
       const m = t.match(/^([A-Za-z_][\w.]*)[:=](-?\d+(?:\.\d+)?)$/) || t.match(/^()(-?\d+(?:\.\d+)?)$/);
       if (!m) continue;
-      const name = m[1] || `valor ${++idx}`;
+      const name = prefix + (m[1] || `valor ${++idx}`);
       if (!series.has(name)) series.set(name, []);
       const arr = series.get(name);
       arr.push(parseFloat(m[2]));
@@ -421,7 +496,10 @@
   A.panels = {
     show, startBuild, finishBuild, line, startPython, setProblems, focusSearch, feedPlot,
     serialConnect, serialDisconnect,
-    get serialOpen() { return serialOpen; },
+    get serialOpen() { return conns.has(projectPort()); },
+    serialPorts: () => [...conns.keys()],
+    get current() { return current; },
+    serialCloseAll: async () => { await A.api('serial:close'); conns.clear(); showConn(null); },
     setBaud: (b) => { baudSel.value = b || 9600; },
     logs: () => ({ buildLog: raw.build, pythonLog: raw.python, serialLog: raw.serial }),
     clearAll: () => { raw.build = raw.python = raw.serial = ''; ['#outputLog', '#pythonLog', '#serialLog'].forEach((s) => (A.$(s).innerHTML = '')); series.clear(); setProblems([], 'Arduino'); setProblems([], 'Python'); },

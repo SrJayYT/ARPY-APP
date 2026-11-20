@@ -6,13 +6,15 @@
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win",
-    "icon": "electron scripts/make-icon.js"
+    "icon": "electron scripts/make-icon.js",
+    "test": "node --test \"test/*.test.js\""
   },
   "keywords": [],
   "author": "DevPapo",
   "license": "MIT",
   "type": "commonjs",
   "dependencies": {
+    "adm-zip": "^0.5.16",
     "avr8js": "^0.21.1",
     "dompurify": "^3.4.18",
     "marked": "^18.2.1",

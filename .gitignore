@@ -4,3 +4,5 @@ ia-datos.txt
 node_modules/
 src/main/secret.js
 dist-amigo/
+__pycache__/
+*.pyc

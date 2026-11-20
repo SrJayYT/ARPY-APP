@@ -3,6 +3,7 @@
   let messages = []; // { id, role: 'user'|'model'|'note', text, images, ts, applied, error, model, usage, auto }
   let chats = [];
   let chatId = null;
+  let chatRoot = null; // proyecto dueño de las conversaciones cargadas (no cambia aunque se cierre)
   let chatTitle = '';
   let busy = false;
   let reqId = 0;
@@ -59,7 +60,7 @@
     if (partial) {
       const open = md.match(/<<<(FILE|EDIT) path="([^"]+)">>>([\s\S]*)$/);
       if (open) {
-        writing = { path: open[2], lines: open[3].split('\n').length, edit: open[1] === 'EDIT' };
+        writing = { path: cleanPath(open[2]), lines: open[3].split('\n').length, edit: open[1] === 'EDIT', body: open[3] };
         md = md.slice(0, open.index) + '\n\n<div data-writing="1"></div>\n\n';
       } else if (/<<<MEMORY>>>[\s\S]*$/.test(md)) {
         md = md.replace(/<<<MEMORY>>>[\s\S]*$/, '');
@@ -168,7 +169,7 @@
   }
 
   function fillModelBody(body, m, partial) {
-    if (m.error) { body.textContent = '⚠ ' + m.error; return; }
+    if (m.error) { body.textContent = '⚠ ' + m.error; return {}; }
     const { md, actions, writing } = parse(m.text, partial);
     body.innerHTML = renderMarkdown(md);
     body.querySelectorAll('[data-action]').forEach((slot) => {
@@ -194,6 +195,7 @@
         body.append(A.el('div', { class: 'apply-all' }, A.el('button', { class: 'btn sm ino', onclick: () => applyAll(m) }, `Aplicar todo (${pending.length})`)));
       }
     }
+    return { actions, writing };
   }
 
   function lineDiff(a, b) {
@@ -286,13 +288,15 @@
     m.applied = m.applied || {};
     try {
       if (a.type === 'file' || a.type === 'edit') {
-        const { after, isNew } = await resolve(a);
+        const { before, after, isNew } = await resolve(a);
         const id = await A.api('fs:backup', a.path);
         await A.editor.applyContent(a.path, after);
         m.applied[i] = id;
+        A.livediff.reset();
+        if (A.editor.previewing) A.editor.endPreview();
+        A.editor.highlightChanges(a.path, A.livediff.diff(before, after, false));
         const dir = a.path.includes('/') ? a.path.slice(0, a.path.lastIndexOf('/')) : '';
         if (dir) A.explorer.expand(dir);
-        if (isNew || !A.editor.isOpen(a.path)) A.editor.open(a.path);
       } else if (a.type === 'delete') {
         m.applied[i] = await A.api('fs:backup', a.path);
         await A.api('fs:delete', a.path);
@@ -369,7 +373,7 @@
   async function afterResponse(m) {
     const { actions } = parse(m.text, false);
     for (const [i, a] of actions.entries()) {
-      if (a.type === 'memory') { await A.api('ai:memory', a.content); m.applied = m.applied || {}; m.applied[i] = true; }
+      if (a.type === 'memory') { await A.api('ai:memory', a.content, chatRoot); m.applied = m.applied || {}; m.applied[i] = true; }
     }
     const agent = A.$('#agentMode').checked;
     if (!agent && !A.$('#autoApply').checked) return;
@@ -408,7 +412,7 @@
     }
     agentRound++;
     note(`🔁 Agente: hay errores, pidiendo corrección (intento ${agentRound}/${AGENT_MAX})…`, 'warn');
-    await sendInternal(`[Modo agente — intento ${agentRound}/${AGENT_MAX}] Apliqué tus cambios y aparecieron estos problemas:\n${problems.join('\n')}\nCorrígelos ahora con cambios mínimos.`, [], true);
+    await sendInternal(A.i18n.t(`[Modo agente — intento ${agentRound}/${AGENT_MAX}] Apliqué tus cambios y aparecieron estos problemas:\n${problems.join('\n')}\nCorrígelos ahora con cambios mínimos.`), [], true);
   }
 
   function rerender(m) {
@@ -422,21 +426,49 @@
     return first ? first.text.replace(/\s+/g, ' ').slice(0, 42) + (first.text.length > 42 ? '…' : '') : chatTitle;
   }
 
-  const persist = A.debounce(async () => {
-    if (!chatId) return;
+  // Guarda la conversación actual en SU proyecto. Captura los datos en el momento de llamar,
+  // así un guardado pendiente nunca escribe en otro proyecto ni en otra conversación.
+  let persistTimer = 0;
+  async function persistNow() {
+    clearTimeout(persistTimer);
+    persistTimer = 0;
+    if (!chatId || !chatRoot) return;
     const t = autoTitle();
     const changed = t !== chatTitle;
     chatTitle = t;
-    await A.api('ai:save-chat', chatId, messages, chatTitle).catch(() => {});
-    if (changed) refreshChats();
-  }, 300);
+    try { await A.api('ai:save-chat', chatId, messages.slice(), chatTitle, chatRoot); } catch (e) { A.toast('No se pudo guardar la conversación: ' + e.message, 'err'); }
+    if (changed) refreshChats().catch(() => {});
+  }
+  function persist() {
+    clearTimeout(persistTimer);
+    persistTimer = setTimeout(persistNow, 300);
+  }
+  // Guarda ya lo pendiente (antes de cerrar el proyecto, cambiar de conversación o salir).
+  async function flush() {
+    if (persistTimer) await persistNow();
+  }
+
+  // Antes de cerrar o cambiar de proyecto: si la IA está respondiendo, preguntar; nunca perder mensajes.
+  async function beforeClose() {
+    if (busy) {
+      const stop = await A.confirm('La IA todavía está respondiendo', 'Si cierras ahora, se guarda lo que lleva escrito y podrás seguir la conversación cuando vuelvas a abrir el proyecto.', 'Cerrar igual');
+      if (!stop) return false;
+      agentRound = AGENT_MAX + 1;
+      A.api('ai:stop');
+      for (let i = 0; i < 60 && busy; i++) await new Promise((r) => setTimeout(r, 100));
+    }
+    await flush();
+    return true;
+  }
+  addEventListener('beforeunload', () => { if (persistTimer) persistNow(); });
 
   // ---------- enviar ----------
   async function send(text, images = []) {
-    text = (text || '').trim();
+    text = A.i18n.t((text || '').trim());
     if (!text && !images.length) return;
     if (busy) { A.toast('Espera a que termine la respuesta actual (o detenla)'); return; }
     if (!A.app.config) { A.toast('Abre un proyecto primero', 'err'); return; }
+    if (A.features && !A.features.isOnline()) { A.toast('Sin conexión a internet: la IA no está disponible.', 'err'); return; }
     agentRound = 0;
     await sendInternal(text, images, false);
   }
@@ -468,7 +500,9 @@
 
     const live = { ...A.editor.liveContext(), ...A.panels.logs(), simLog: A.sim && A.sim.running ? A.sim.log() : '' };
     const history = messages.filter((x) => x.role !== 'note').map(({ role, text, images }) => ({ role, text, images }));
+    A.livediff.reset();
     const res = await A.api('ai:chat', { reqId: id, history, live, model: A.$('#modelSelect').value });
+    lastLive = streaming && streaming.live;
     streaming = null;
     busy = false;
     setBusy(false);
@@ -488,8 +522,26 @@
     n.replaceWith(renderMessage(m));
     host.scrollTop = host.scrollHeight;
     A.explorer.refresh();
+    const livePath = streaming === null ? lastLive : null;
     if (!m.error && !res.aborted) await afterResponse(m);
     else agentRound = 0;
+    finishLive(m, livePath, !m.error && !res.aborted);
+  }
+
+  let lastLive = null;
+
+  // Tras la respuesta: el archivo que se veía en vivo queda aplicado (resaltado) o con Aplicar/Descartar.
+  async function finishLive(m, path, ok) {
+    if (!path) return;
+    if (!ok) { A.livediff.reset(); if (A.editor.previewing) A.editor.endPreview(); return; }
+    const { actions } = parse(m.text, false);
+    const i = actions.map((a, k) => ({ a, k })).reverse().find(({ a }) => (a.type === 'file' || a.type === 'edit') && a.path === path)?.k;
+    if (i === undefined) { A.livediff.reset(); if (A.editor.previewing) A.editor.endPreview(); return; }
+    if (m.applied && m.applied[i]) { A.livediff.reset(); if (A.editor.previewing) A.editor.endPreview(); return; } // ya se resaltó al aplicar
+    try {
+      const { before, after } = await resolve(actions[i]);
+      A.livediff.done({ path, before, after, applied: false, onApply: () => apply(m, i) });
+    } catch { A.livediff.reset(); if (A.editor.previewing) A.editor.endPreview(); }
   }
 
   let renderPending = false;
@@ -503,7 +555,18 @@
       if (!streaming) return;
       const host = A.$('#messages');
       const stick = host.scrollTop + host.clientHeight >= host.scrollHeight - 60;
-      fillModelBody(streaming.el, streaming.m, true);
+      const { actions: acts, writing } = fillModelBody(streaming.el, streaming.m, true);
+      if (writing) {
+        streaming.live = writing.path;
+        A.livediff.feed(writing);
+      } else if (streaming.live && streaming.finalized !== streaming.live && acts) {
+        // el bloque se cerró: mostrar el diff final de ese archivo mientras sigue el texto
+        const a = [...acts].reverse().find((x) => (x.type === 'file' || x.type === 'edit') && x.path === streaming.live);
+        if (a) {
+          streaming.finalized = a.path;
+          resolve(a).then((r) => A.livediff.final(a.path, r.before, r.after)).catch(() => {});
+        }
+      }
       streaming.el.parentElement.querySelector('.who .muted')?.remove();
       if (stick) host.scrollTop = host.scrollHeight;
     });
@@ -550,7 +613,7 @@
 
   // ---------- conversaciones ----------
   async function refreshChats() {
-    const data = await A.api('ai:load');
+    const data = await A.api('ai:load', chatRoot);
     chats = data.chats;
     const sel = A.$('#chatSelect');
     sel.innerHTML = '';
@@ -560,19 +623,22 @@
 
   async function switchChat(id) {
     if (busy) { A.toast('Espera a que termine la respuesta'); A.$('#chatSelect').value = chatId; return; }
+    await flush();
     chatId = id;
     const c = chats.find((x) => x.id === id);
     chatTitle = c ? c.title : 'Nueva conversación';
-    messages = await A.api('ai:load-chat', id);
+    messages = await A.api('ai:load-chat', id, chatRoot);
     agentRound = 0;
     renderAll();
-    try { localStorage.setItem('arpy-chat-' + (A.app.config && A.app.config.name), id); } catch {}
+    A.api('ai:set-active', id, chatRoot).catch(() => {});
   }
 
   async function newChat() {
     if (busy) return;
     const id = 'c' + uid();
-    await A.api('ai:save-chat', id, [], 'Nueva conversación');
+    await flush();
+    await A.api('ai:save-chat', id, [], 'Nueva conversación', chatRoot);
+    A.api('ai:set-active', id, chatRoot).catch(() => {});
     chatId = id;
     chatTitle = 'Nueva conversación';
     messages = [];
@@ -585,7 +651,7 @@
     e.preventDefault();
     A.menu(e.clientX, e.clientY, [
       { label: 'Nueva conversación', action: newChat },
-      { label: 'Renombrar…', action: async () => { const t = await A.prompt('Renombrar conversación', chatTitle); if (t) { chatTitle = t; await A.api('ai:save-chat', chatId, messages, t); refreshChats(); } } },
+      { label: 'Renombrar…', action: async () => { const t = await A.prompt('Renombrar conversación', chatTitle); if (t) { chatTitle = t; await A.api('ai:save-chat', chatId, messages, t, chatRoot); refreshChats(); } } },
       { label: 'Vaciar esta conversación', action: clearCurrent },
       '-',
       { label: 'Eliminar conversación', danger: true, action: deleteCurrent },
@@ -596,13 +662,13 @@
     if (!(await A.confirm('Vaciar conversación', 'Se borrarán los mensajes de esta conversación. La memoria del proyecto (🧠) se conserva.', 'Vaciar', true))) return;
     messages = [];
     renderAll();
-    await A.api('ai:save-chat', chatId, [], chatTitle);
+    await A.api('ai:save-chat', chatId, [], chatTitle, chatRoot);
   }
 
   async function deleteCurrent() {
     if (!(await A.confirm('Eliminar conversación', `¿Eliminar "${chatTitle}"? La memoria del proyecto se conserva.`, 'Eliminar', true))) return;
-    await A.api('ai:delete-chat', chatId);
-    const data = await A.api('ai:load');
+    await A.api('ai:delete-chat', chatId, chatRoot);
+    const data = await A.api('ai:load', chatRoot);
     chats = data.chats;
     await switchChat(chats[0].id);
     refreshChats();
@@ -610,13 +676,13 @@
 
   // ---------- memoria del proyecto ----------
   async function openMemory() {
-    const { memory } = await A.api('ai:load');
+    const { memory } = await A.api('ai:load', chatRoot);
     const ta = A.el('textarea', {}, memory);
     const body = A.el('div', { class: 'field' },
       A.el('label', {}, 'Lo que la IA recuerda siempre de este proyecto (objetivo, hardware, pines, decisiones). Se comparte entre todas las conversaciones.'),
       ta,
       A.el('small', {}, 'La IA la actualiza sola cuando aprende algo importante. Puedes editarla tú también.'),
-      A.el('div', { class: 'modal-foot' }, A.el('button', { class: 'btn ino', onclick: async () => { await A.api('ai:memory', ta.value); A.modal.close(); A.toast('Memoria guardada', 'ok'); } }, 'Guardar')));
+      A.el('div', { class: 'modal-foot' }, A.el('button', { class: 'btn ino', onclick: async () => { await A.api('ai:memory', ta.value, chatRoot); A.modal.close(); A.toast('Memoria guardada', 'ok'); } }, 'Guardar')));
     A.modal.open('Memoria del proyecto', body);
   }
 
@@ -654,11 +720,13 @@
 
   // ---------- carga por proyecto ----------
   async function load() {
-    const data = await A.api('ai:load');
+    await flush(); // lo pendiente del proyecto anterior va a SU carpeta
+    chatRoot = A.app.root;
+    chatId = null;
+    messages = [];
+    const data = await A.api('ai:load', chatRoot);
     chats = data.chats;
-    let saved = null;
-    try { saved = localStorage.getItem('arpy-chat-' + (A.app.config && A.app.config.name)); } catch {}
-    const target = chats.find((c) => c.id === saved) || chats[0];
+    const target = chats.find((c) => c.id === data.active) || chats[0];
     await switchChat(target.id);
     await refreshChats();
     A.api('ai:usage').then(renderQuota).catch(() => {});
@@ -669,7 +737,8 @@
     if (!file || !file.type.startsWith('image/')) return;
     if (file.size > 15 * 1024 * 1024) return A.toast('Imagen demasiado grande (máx. 15 MB)', 'err');
     const r = new FileReader();
-    r.onload = () => downscale(r.result).then((d) => { pendingImages.push(d); renderPendingImages(); });
+    if (pendingImages.length >= 10) { A.toast('Máximo 10 imágenes por mensaje', 'err'); return; }
+    r.onload = () => downscale(r.result).then((d) => { if (pendingImages.length < 10) pendingImages.push(d); renderPendingImages(); });
     r.readAsDataURL(file);
   }
 
@@ -711,7 +780,10 @@
     renderPendingImages();
     input.value = '';
     autosize();
-    send(v || 'Revisa esta imagen de mi circuito en relación con el proyecto.', imgs);
+    const def = imgs.length > 1
+      ? `Analiza estas ${imgs.length} imágenes una por una y dime qué ves en cada una y cómo se relacionan con el proyecto.`
+      : 'Analiza esta imagen y dime qué ves y cómo se relaciona con el proyecto.';
+    send(v.trim() ? v : def, imgs);
   }
   input.addEventListener('input', autosize);
   input.addEventListener('keydown', (e) => {
@@ -752,7 +824,8 @@
     ['App Python', 'Crea una app de escritorio en Python con interfaz moderna que se conecte al Arduino y muestre/controle lo que hace el sketch.'],
     ['Nuevo sensor', 'Quiero agregar un sensor. Pregúntame cuál si no lo sabes, y luego modifica el sketch y la app Python.'],
   ];
-  for (const [label, prompt] of CHIPS) A.$('#chips').append(A.el('button', { onclick: () => send(prompt) }, label));
+  const ARD_CHIPS = ['Diagrama de conexiones', 'Nuevo sensor'];
+  for (const [label, prompt] of CHIPS) A.$('#chips').append(A.el('button', { class: ARD_CHIPS.includes(label) ? 'ard-only' : '', onclick: () => send(prompt) }, label));
 
-  A.chat = { send, load, renderCtx, openMemory, newChat, get busy() { return busy; } };
+  A.chat = { applyHunks, send, load, flush, beforeClose, renderCtx, openMemory, newChat, get busy() { return busy; } };
 })();

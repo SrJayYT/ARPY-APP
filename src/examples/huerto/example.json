@@ -1,0 +1,18 @@
+{
+  "title": "Huerto con riego automático",
+  "description": "La planta se marchita en pantalla cuando le falta agua. Riega a mano o en automático.",
+  "level": "Intermedio",
+  "tags": ["Humedad de suelo", "Relé"],
+  "board": "arduino:avr:uno",
+  "baud": 115200,
+  "app": true,
+  "accent": "#EDF1EA",
+  "requirements": "pyserial\n",
+  "wiring": {
+    "version": 1,
+    "parts": [
+      { "id": "suelo", "type": "soil", "label": "Sensor de humedad", "x": 60, "y": 300, "pins": { "sig": "A0", "vcc": "5V", "gnd": "GND" } },
+      { "id": "bomba", "type": "relay", "label": "Relé de la bomba", "x": 900, "y": 60, "pins": { "in": "D7", "vcc": "5V", "gnd": "GND" } }
+    ]
+  }
+}

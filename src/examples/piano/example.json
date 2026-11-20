@@ -1,0 +1,18 @@
+{
+  "title": "Piano con zumbador",
+  "description": "Toca con el teclado del PC o el mouse, graba y repite, o escucha melodías.",
+  "level": "Principiante",
+  "tags": ["Zumbador", "Simulable"],
+  "board": "arduino:avr:uno",
+  "baud": 115200,
+  "app": true,
+  "accent": "#6B4A32",
+  "requirements": "pyserial\n",
+  "wiring": {
+    "version": 1,
+    "parts": [
+      { "id": "zumbador", "type": "buzzer", "label": "Zumbador pasivo", "x": 60, "y": 120, "pins": { "sig": "D8", "gnd": "GND" } },
+      { "id": "led", "type": "led", "label": "LED", "color": "#f2c94c", "x": 900, "y": 120, "pins": { "anode": "D13", "cathode": "GND" } }
+    ]
+  }
+}

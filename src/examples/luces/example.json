@@ -1,0 +1,17 @@
+{
+  "title": "Luces RGB con rueda de color",
+  "description": "Elige el color en una rueda, ajusta el brillo o usa escenas. Transiciones suaves en el LED.",
+  "level": "Principiante",
+  "tags": ["LED RGB", "PWM", "Simulable"],
+  "board": "arduino:avr:uno",
+  "baud": 115200,
+  "app": true,
+  "accent": "#17161A",
+  "requirements": "pyserial\n",
+  "wiring": {
+    "version": 1,
+    "parts": [
+      { "id": "rgb", "type": "rgb", "label": "LED RGB", "x": 60, "y": 120, "pins": { "r": "D9", "g": "D10", "b": "D11", "gnd": "GND" } }
+    ]
+  }
+}

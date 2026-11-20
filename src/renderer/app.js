@@ -48,7 +48,9 @@
   }
 
   // ---------- puertos ----------
+  let knownPorts = null; // para detectar placas recién conectadas
   async function refreshPorts(announce) {
+    if (A.app.config && A.app.config.arduino === false) return;
     const sel = A.$('#portSelect');
     let ports = [];
     try { ports = await A.api('serial:list'); } catch {}
@@ -80,13 +82,65 @@
         await setBoard(info.board.fqbn);
       } else A.toast(`${info.board.name} en ${port}`, 'ok');
     }
+    // Placa recién enchufada en otro puerto: ofrecer usarla.
+    const added = knownPorts ? [...all.values()].filter((p) => !knownPorts.has(p.address) && p.address !== port) : [];
+    knownPorts = new Set(all.keys());
+    for (const p of added.slice(0, 2)) {
+      const use = async () => {
+        A.app.config = await A.api('project:config', { port: p.address });
+        if (p.board && p.board.fqbn && p.board.fqbn !== A.app.config.board) await setBoard(p.board.fqbn);
+        sel.value = p.address;
+        statusbar();
+        A.toast(`Usando ${p.board ? p.board.name : 'la placa'} en ${p.address}`, 'ok');
+      };
+      const text = p.board
+        ? `Se conectó ${p.board.name} en ${p.address}`
+        : `Se conectó una placa sin identificar en ${p.address} (puede ser un clon con chip CH340)`;
+      A.toast(text, 'ok', { action: { label: 'Usar', fn: use } });
+    }
+    renderPortHelp(all.size === 0);
     statusbar();
+  }
+
+  // Proyecto sin Arduino: se ocultan placa, puertos, subir, conexiones y simulador.
+  const arduinoOn = () => !A.app.config || A.app.config.arduino !== false;
+  function applyArduinoMode() {
+    const on = arduinoOn();
+    document.body.classList.toggle('no-arduino', !on);
+    const badge = A.$('#projPyBadge');
+    if (badge) badge.remove();
+    if (!on) A.$('#projName').after(A.el('span', { id: 'projPyBadge', class: 'py-badge', title: 'Proyecto solo de Python (Arduino desactivado)' }, 'PYTHON'));
+    if (!on && ['sim'].includes(A.panels.current)) A.panels.show('python');
+  }
+
+  async function setArduino(on) {
+    const patch = { arduino: on };
+    if (on && !A.app.config.board) patch.board = 'arduino:avr:uno';
+    A.app.config = await A.api('project:config', patch);
+    if (on && !(await A.api('fs:exists', (A.app.config.sketch || 'sketch') + '/sketch.ino'))) {
+      await A.api('fs:write', (A.app.config.sketch || 'sketch') + '/sketch.ino', 'void setup() {\n  Serial.begin(9600);\n}\n\nvoid loop() {\n}\n');
+      await A.explorer.refresh();
+    }
+    applyArduinoMode();
+    A.$('#boardSelect').value = A.app.config.board || '';
+    boardCard();
+    if (on) refreshPorts(false);
+    statusbar();
+    A.toast(on ? 'Arduino activado en este proyecto' : 'Proyecto solo de Python', 'ok');
+  }
+
+  // "¿No aparece tu placa?" junto al selector de puertos.
+  function renderPortHelp(show) {
+    const b = A.$('#btnPortHelp');
+    if (b) b.classList.toggle('attention', !!show);
   }
 
   // ---------- proyecto ----------
   async function openProject(res) {
     if (!res) return;
     A.app.config = res.config;
+    A.app.root = res.root;
+    applyArduinoMode();
     A.$('#welcome').classList.add('hidden');
     A.$('#projName').textContent = res.config.name || res.root.split(/[\\/]/).pop();
     A.$('#boardSelect').value = res.config.board;
@@ -106,6 +160,7 @@
     updatePyEnv();
     refreshGitDot();
     statusbar();
+    A.sim.refreshParts();
   }
 
   const TPL_NAMES = { app: 'App Python', blink: 'Blink', ctk: 'CustomTkinter', web: 'Web Flask', empty: 'Vacío' };
@@ -137,6 +192,7 @@
     A.$$('.welcome-tabs button').forEach((b) => b.classList.toggle('active', b.dataset.w === t));
     A.$$('.welcome-pane').forEach((p) => p.classList.toggle('hidden', p.dataset.pane !== t));
     if (t === 'new') setTimeout(() => { A.$('#newName').focus(); A.$('#newName').select(); }, 30);
+    if (t === 'examples') renderExamples();
   }
 
   async function openFrom(p) {
@@ -178,6 +234,38 @@
       A.el('div', { class: 'r-body' }, A.el('b', {}, name), meta, A.el('small', {}, r.root)),
       forget));
     }
+  }
+
+  // ---------- ejemplos ----------
+  let examples = null;
+  let exFilter = 'all';
+  async function renderExamples() {
+    if (!examples) { try { examples = await A.api('examples:list'); } catch (e) { examples = []; A.toast(e.message, 'err'); } }
+    const filters = [['all', 'Todos'], ['app', 'Con app de escritorio'], ['basic', 'Solo Arduino']];
+    const fhost = A.$('#exFilter');
+    fhost.innerHTML = '';
+    for (const [k, label] of filters) fhost.append(A.el('button', { class: exFilter === k ? 'active' : '', onclick: () => { exFilter = k; renderExamples(); } }, label));
+    const list = A.$('#exampleList');
+    list.innerHTML = '';
+    for (const ex of examples.filter((e) => exFilter === 'all' || (exFilter === 'app' ? e.app : !e.app))) {
+      const card = A.el('button', { class: 'ex-card' + (ex.app ? ' has-app' : ''), onclick: () => createExample(ex) });
+      if (ex.preview) card.append(A.el('div', { class: 'ex-prev', style: `background:${ex.accent || 'var(--bg-4)'}` }, A.el('img', { src: ex.preview, alt: '' })));
+      else card.append(A.el('div', { class: 'ex-prev plain', style: `--a:${ex.accent || 'var(--ino)'}` }, A.el('span', {}, Object.entries((ex.parts || []).reduce((o, p) => ((o[p] = (o[p] || 0) + 1), o), {})).map(([p, n]) => (n > 1 ? `${n} × ` : '') + A.i18n.t(p)).join('\n'))));
+      card.append(A.el('div', { class: 'ex-body' },
+        A.el('b', {}, ex.title),
+        A.el('small', {}, ex.description),
+        A.el('div', { class: 'ex-tags' }, ...(ex.tags || []).map((t) => A.el('span', {}, t)), ex.app ? A.el('span', { class: 'app' }, 'App Tkinter') : null, A.el('span', { class: 'lvl' }, ex.level || ''))));
+      list.append(card);
+    }
+  }
+
+  async function createExample(ex) {
+    const name = await A.prompt('Crear proyecto desde ejemplo', ex.title, 'Nombre del proyecto');
+    if (!name) return;
+    try {
+      openProject(await A.api('examples:create', { id: ex.id, name, parent: newFolder }));
+      A.toast(`Ejemplo "${ex.title}" listo. Mira las conexiones en el botón Conexiones.`, 'ok');
+    } catch (e) { A.toast(e.message, 'err'); }
   }
 
   let newFolder = '';
@@ -237,7 +325,7 @@
   function busy(btn, on) { A.$(btn).classList.toggle('busy', on); A.$(btn).disabled = on; }
 
   async function verify() {
-    if (!A.app.config) return;
+    if (!A.app.config || A.app.config.arduino === false) return;
     await A.editor.saveAll();
     busy('#btnVerify', true);
     A.panels.startBuild(`⚙ Verificando ${findBoard(A.app.config.board).name}`);
@@ -251,7 +339,7 @@
   }
 
   async function upload() {
-    if (!A.app.config) return false;
+    if (!A.app.config || A.app.config.arduino === false) return false;
     if (!A.app.config.port) { A.toast('Conecta la placa y elige el puerto', 'err'); return false; }
     await A.editor.saveAll();
     busy('#btnUpload', true);
@@ -470,6 +558,7 @@
   function pythonStopped() { pyRunning = false; A.$('#btnStopPy').disabled = true; }
 
   async function runAll() {
+    if (A.app.config && A.app.config.arduino === false) return runPython();
     if (await upload()) {
       A.panels.line('build', '⏳ Esperando a que la placa reinicie…', 'info');
       setTimeout(() => runPython(), 1800);
@@ -499,6 +588,10 @@
       A.el('option', { value: 'lite' }, 'Ligero: menos animaciones y sin minimapa (equipos con 8 GB o menos)'),
       A.el('option', { value: 'full' }, 'Completo: todos los efectos'));
     perf.value = settings.perfMode || 'auto';
+    const projArd = A.el('input', { type: 'checkbox' });
+    projArd.checked = arduinoOn();
+    const lang = A.el('select', {}, A.el('option', { value: 'en' }, 'English'), A.el('option', { value: 'es' }, 'Español'));
+    lang.value = settings.lang || 'en';
     const introChk = A.el('input', { type: 'checkbox' });
     introChk.checked = settings.intro !== false;
 
@@ -515,21 +608,30 @@
       field('Tamaño de letra del editor', font),
       field('Rendimiento', perf, 'El modo ligero dibuja sin GPU, quita el minimapa y reduce animaciones: usa casi la mitad de RAM. Ideal para laptops con 8 GB. Reinicia la app para aplicarlo del todo.'),
       A.el('label', { class: 'chk' }, introChk, 'Mostrar la animación de apertura'),
+      field('Idioma / Language', lang, 'La ventana se recarga para aplicar el idioma.'),
+      A.app.config ? A.el('label', { class: 'chk' }, projArd, `Este proyecto (${A.app.config.name}) usa una placa Arduino`) : null,
+      A.el('div', { class: 'row', style: 'gap:8px;flex-wrap:wrap' },
+        A.el('button', { class: 'btn ghost sm', onclick: () => { A.modal.close(); A.wizard.open(); } }, 'Asistente de configuración'),
+        A.el('button', { class: 'btn ghost sm', onclick: () => A.features.checkUpdates(true) }, 'Buscar actualizaciones'),
+        A.el('span', { class: 'muted', style: 'font-size:12px;align-self:center' }, `Versión ${settings.appVersion || ''}`)),
       A.el('label', { class: 'chk' }, auto, 'Aplicar automáticamente los cambios de la IA (sin pulsar "Aplicar")'),
       A.el('label', { class: 'chk' }, inline, 'Autocompletado con IA mientras escribes (texto gris, Tab para aceptar). Usa cuota de Gemini.'),
       A.el('div', { class: 'modal-foot' }, A.el('button', {
         class: 'btn ino',
         onclick: async () => {
+          const prevLang = settings.lang || 'en';
+          if (A.app.config && projArd.checked !== arduinoOn()) await setArduino(projArd.checked);
           settings = await A.api('settings:set', {
             geminiApiKey: key.value.trim(), model: model.value, pythonPath: py.value.trim(),
             arduinoCliPath: cli.value.trim(), fontSize: +font.value || 14, autoApply: auto.checked, aiComplete: inline.checked,
-            perfMode: perf.value, intro: introChk.checked,
+            perfMode: perf.value, intro: introChk.checked, lang: lang.value,
           });
           applySettings();
           env = await A.api('status');
           statusbar();
           renderEnv();
           A.modal.close();
+          if ((settings.lang || 'en') !== prevLang) { A.i18n.reload(); return; }
           A.toast('Configuración guardada', 'ok');
         },
       }, 'Guardar')));
@@ -546,6 +648,7 @@
     A.editor.setLite(lite);
     try { localStorage.setItem('arpy.perf', lite ? 'lite' : 'full'); } catch {}
     try { localStorage.setItem('arpy.intro', settings.intro === false ? '0' : '1'); } catch {}
+    try { localStorage.setItem('arpy.lang', settings.lang || 'en'); } catch {}
   }
 
   async function applySettings() {
@@ -649,6 +752,10 @@
     A.$('#btnBoards').addEventListener('click', openBoards);
     A.$('#btnSaveVersion').addEventListener('click', saveVersion);
     A.$('#btnHistory').addEventListener('click', openHistory);
+    A.$('#btnWiring').addEventListener('click', () => A.wiring.open());
+    A.$('#btnDesigner').addEventListener('click', () => A.designer.open());
+    A.$('#btnExportProject').addEventListener('click', () => A.features.exportProject());
+    A.$('#btnImportZip').addEventListener('click', () => A.features.importProject());
     A.$('#btnTheme').addEventListener('click', async () => {
       const t = document.documentElement.dataset.theme === 'light' ? 'dark' : 'light';
       applyTheme(t);
@@ -663,10 +770,12 @@
     A.$('#btnNewFolder').addEventListener('click', () => A.explorer.newFolder());
     A.$('#btnRevealProject').addEventListener('click', () => A.api('project:reveal'));
     A.$('#btnCloseProject').addEventListener('click', async () => {
+      if (!(await A.chat.beforeClose())) return; // guarda la conversación en este proyecto
       await A.editor.saveAll();
-      await A.panels.serialDisconnect(true);
+      await A.panels.serialCloseAll();
       await A.api('python:stop');
       await A.api('project:close');
+      A.app.root = null;
       A.editor.closeAll();
       showWelcome();
     });
@@ -677,10 +786,21 @@
 
     // bienvenida
     let template = 'app';
-    A.$$('#newTemplate button').forEach((b) => b.addEventListener('click', () => {
+    const pickTemplate = (b) => {
       template = b.dataset.t;
       A.$$('#newTemplate button').forEach((x) => x.classList.toggle('active', x === b));
-    }));
+    };
+    A.$$('#newTemplate button').forEach((b) => b.addEventListener('click', () => pickTemplate(b)));
+    // Arduino sí/no: cambia plantillas y oculta la placa
+    const syncMode = () => {
+      const ard = A.$('#newArduino').checked;
+      A.$('#newBoardField').classList.toggle('hidden', !ard);
+      A.$$('#newTemplate button[data-mode]').forEach((b) => b.classList.toggle('off', (b.dataset.mode === 'ard') !== ard));
+      const cur = A.$(`#newTemplate button[data-t="${template}"]`);
+      if (!cur || cur.classList.contains('off')) pickTemplate(A.$(`#newTemplate button[data-mode="${ard ? 'ard' : 'py'}"]`));
+    };
+    A.$('#newArduino').addEventListener('change', syncMode);
+    syncMode();
     A.$$('.welcome-tabs button').forEach((b) => b.addEventListener('click', () => welcomeTab(b.dataset.w)));
     A.api('project:default-folder').then((p) => { newFolder = p; updateNewPreview(); });
     A.$('#newName').addEventListener('input', updateNewPreview);
@@ -691,7 +811,7 @@
     });
     A.$('#btnCreate').addEventListener('click', async () => {
       try {
-        openProject(await A.api('project:create', { name: A.$('#newName').value, template, board: A.$('#newBoard').value, parent: newFolder }));
+        openProject(await A.api('project:create', { name: A.$('#newName').value, template, board: A.$('#newBoard').value, parent: newFolder, arduino: A.$('#newArduino').checked }));
       } catch (e) { A.toast(e.message, 'err'); }
     });
     A.$('#btnOpen').addEventListener('click', async () => {
@@ -717,8 +837,9 @@
     // doble clic en un .arpy con la app ya abierta
     window.arpy.on('app:open-file', async (p) => {
       if (A.app.config) {
+        if (!(await A.chat.beforeClose())) return;
         await A.editor.saveAll();
-        await A.panels.serialDisconnect(true);
+        await A.panels.serialCloseAll();
         await A.api('python:stop');
       }
       openFrom(p);
@@ -749,7 +870,7 @@
     window.arpy.on('fs:changed', onFs);
     let lastPorts = null;
     setInterval(async () => {
-      if (!A.app.config || document.hidden) return;
+      if (!A.app.config || document.hidden || A.app.config.arduino === false) return;
       let ports = [];
       try { ports = await A.api('serial:list'); } catch { return; }
       const sig = ports.map((p) => p.address).sort().join('|');
@@ -760,9 +881,22 @@
     env = await A.api('status');
     await applySettings();
     statusbar();
+    A.features.init();
     // Primera vez en un equipo nuevo: descarga arduino-cli sin que el usuario tenga que hacer nada.
     if (!env.arduino.installed) setTimeout(installCli, 800);
+    if (!A.wizard.resume() && !settings.wizardDone && !(settings.recentProjects || []).length) setTimeout(() => A.wizard.open(), 900);
+    if (settings.wizardBoard && settings.wizardBoard.fqbn) A.$('#newBoard').value = settings.wizardBoard.fqbn;
 
+    // El idioma guardado manda: si la ventana se abrió con otro, se recarga una vez.
+    if ((settings.lang || 'en') !== A.i18n.lang && !sessionStorage.getItem('arpy.langFix')) {
+      sessionStorage.setItem('arpy.langFix', '1');
+      try { localStorage.setItem('arpy.lang', settings.lang || 'en'); } catch {}
+      location.reload();
+      return;
+    }
+    const reopen = sessionStorage.getItem('arpy.reopen');
+    sessionStorage.removeItem('arpy.reopen');
+    if (reopen) { try { await openProject(await A.api('project:open', reopen)); return; } catch {} }
     const launch = await A.api('project:launch-file');
     if (launch) {
       try { await openProject(await A.api('project:open', launch)); return; } catch (e) { A.toast(e.message, 'err'); }
@@ -770,5 +904,5 @@
     showWelcome();
   }
 
-  Object.assign(A.app, { verify, upload, runAll, init, openBoards, openHistory, saveVersion, quickOpen, applyTheme, updatePyEnv, setBoard, runPython, pythonStopped, refreshPorts, openSettings });
+  Object.assign(A.app, { welcomeTab, openProject, verify, upload, runAll, init, openBoards, openHistory, saveVersion, quickOpen, applyTheme, updatePyEnv, setBoard, runPython, pythonStopped, refreshPorts, openSettings });
 })();

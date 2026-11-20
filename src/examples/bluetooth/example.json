@@ -1,0 +1,18 @@
+{
+  "title": "Control por Bluetooth",
+  "description": "Enciende una lámpara (relé) y un LED desde el celular con un módulo HC-05.",
+  "level": "Intermedio",
+  "tags": ["HC-05", "Relé", "Celular"],
+  "board": "arduino:avr:uno",
+  "baud": 9600,
+  "app": false,
+  "accent": "#a78bfa",
+  "wiring": {
+    "version": 1,
+    "parts": [
+      { "id": "bt", "type": "hc05", "label": "Bluetooth HC-05", "x": 60, "y": 60, "pins": { "tx": "D10", "rx": "D11", "vcc": "5V", "gnd": "GND" } },
+      { "id": "rele", "type": "relay", "label": "Relé de la lámpara", "x": 900, "y": 60, "pins": { "in": "D7", "vcc": "5V", "gnd": "GND" } },
+      { "id": "led", "type": "led", "label": "LED", "color": "#3ccf91", "x": 900, "y": 300, "pins": { "anode": "D13", "cathode": "GND" } }
+    ]
+  }
+}

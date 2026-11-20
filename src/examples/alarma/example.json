@@ -1,0 +1,18 @@
+{
+  "title": "Alarma con sensor de movimiento",
+  "description": "Sensor PIR, zumbador con sirena de dos tonos y LED. Se arma y desarma por el monitor serie.",
+  "level": "Principiante",
+  "tags": ["PIR", "Zumbador", "Simulable"],
+  "board": "arduino:avr:uno",
+  "baud": 9600,
+  "app": false,
+  "accent": "#ff6b6b",
+  "wiring": {
+    "version": 1,
+    "parts": [
+      { "id": "pir", "type": "pir", "label": "Sensor PIR", "x": 60, "y": 60, "pins": { "out": "D2", "vcc": "5V", "gnd": "GND" } },
+      { "id": "zumbador", "type": "buzzer", "label": "Zumbador", "x": 900, "y": 60, "pins": { "sig": "D8", "gnd": "GND" } },
+      { "id": "led", "type": "led", "label": "LED de estado", "color": "#ff4d4d", "x": 900, "y": 300, "pins": { "anode": "D13", "cathode": "GND" } }
+    ]
+  }
+}
