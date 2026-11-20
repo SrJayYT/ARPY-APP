@@ -1,0 +1,6 @@
+.env
+dist/
+ia-datos.txt
+node_modules/
+src/main/secret.js
+dist-amigo/

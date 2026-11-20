@@ -1,0 +1,87 @@
+{
+  "name": "arpy-copiler",
+  "version": "1.0.0",
+  "description": "IDE todo-en-uno para Arduino + Python con IA integrada",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win",
+    "icon": "electron scripts/make-icon.js"
+  },
+  "keywords": [],
+  "author": "DevPapo",
+  "license": "MIT",
+  "type": "commonjs",
+  "dependencies": {
+    "avr8js": "^0.21.1",
+    "dompurify": "^3.4.18",
+    "marked": "^18.2.1",
+    "monaco-editor": "^0.57.0",
+    "serialport": "^13.0.0"
+  },
+  "devDependencies": {
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0"
+  },
+  "productName": "ARPY Copiler",
+  "build": {
+    "appId": "com.arpy.copiler",
+    "productName": "ARPY Copiler",
+    "copyright": "ARPY Copiler",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "src/**",
+      "package.json",
+      "!src/**/*.map"
+    ],
+    "asarUnpack": [
+      "src/main/simworker.js",
+      "node_modules/avr8js/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ARPY Copiler",
+      "uninstallDisplayName": "ARPY Copiler",
+      "artifactName": "ARPY Copiler Setup ${version}.exe"
+    },
+    "portable": {
+      "artifactName": "ARPY Copiler Portable ${version}.exe"
+    },
+    "fileAssociations": [
+      {
+        "ext": "arpy",
+        "name": "Proyecto ARPY",
+        "description": "Proyecto de ARPY Copiler",
+        "role": "Editor",
+        "icon": "build/icon.ico"
+      }
+    ]
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SrJayYT/ARPY-APP.git"
+  }
+}
