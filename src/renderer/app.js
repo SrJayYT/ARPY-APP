@@ -168,8 +168,9 @@
     try { await A.api('runtimes:install', name); return true; } catch (e) { A.toast(e.message, 'err'); return false; }
   }
 
-  async function runActive() {
-    if (!A.app.config) return;
+  // Qué se ejecuta al pulsar "Ejecutar": el archivo abierto, o el principal del proyecto.
+  function runTarget() {
+    if (!A.app.config) return {};
     let file = A.editor.liveContext().activeFile;
     let kind = file && TECH.runnerFor(file);
     if (!kind || (kind === 'preview' && !hasTech('web') && !hasTech('ejs') && !hasTech('php'))) {
@@ -177,6 +178,22 @@
       file = main ? main[1]() : null;
       kind = file && TECH.runnerFor(file);
     }
+    return { file, kind };
+  }
+
+  // El botón dice qué va a ejecutar ("Ejecutar main.py"), así nadie se pierde.
+  function updateRunLabel() {
+    const { file, kind } = runTarget();
+    const name = file ? file.split('/').pop() : '';
+    const lbl = A.$('#runLabel');
+    if (!lbl) return;
+    lbl.textContent = !file ? A.i18n.t('Ejecutar') : kind === 'preview' ? A.i18n.t('Ver') + ' ' + name : A.i18n.t('Ejecutar') + ' ' + name;
+    A.$('#btnRunPy').title = file ? `${kind === 'preview' ? 'Abre la vista previa de' : 'Ejecuta'} ${file} (F5)` : 'Abre un archivo que se pueda ejecutar (F5)';
+  }
+
+  async function runActive() {
+    if (!A.app.config) return;
+    const { file, kind } = runTarget();
     if (!file || !kind) return A.toast('Abre un archivo que se pueda ejecutar (.py, .js, .java, .php, .sql o una página web)', 'err');
     if (kind === 'python') return runPython(file);
     if (kind === 'preview') return openPreview(file);
@@ -565,7 +582,7 @@
     d.classList.toggle('on', n > 0);
     d.style.background = n > 0 ? 'var(--warn)' : '';
     d.style.boxShadow = n > 0 ? '0 0 6px var(--warn)' : '';
-    A.$('#btnSaveVersion').title = n > 0 ? `${n} archivo(s) con cambios sin guardar como versión` : 'Guardar una versión del proyecto (Ctrl+Shift+S)';
+    A.$('#btnMore').title = n > 0 ? `${n} archivo(s) con cambios sin guardar como versión — Más: versiones, placas y librerías` : 'Más: versiones, placas y librerías';
   }
 
   async function openHistory() {
@@ -704,6 +721,25 @@
   }
 
   function pythonStopped() { pyRunning = false; A.$('#btnStopPy').disabled = true; }
+
+  function runMenu() {
+    const r = A.$('#btnRunMenu').getBoundingClientRect();
+    A.menu(r.left, r.bottom + 4, [
+      { label: '▶  ' + A.i18n.t('Ejecutar el archivo abierto') + '   F5', action: () => runActive() },
+      { label: '⚡  ' + A.i18n.t('Subir a la placa y luego ejecutar Python') + '   Ctrl+F5', action: () => runAll() },
+    ]);
+  }
+
+  function moreMenu() {
+    const r = A.$('#btnMore').getBoundingClientRect();
+    const items = [
+      { label: '💾  ' + A.i18n.t('Guardar una versión del proyecto'), action: saveVersion },
+      { label: '🕘  ' + A.i18n.t('Historial de versiones'), action: openHistory },
+    ];
+    if (hasTech('arduino')) items.push('-', { label: '🔌  ' + A.i18n.t('Gestor de placas'), action: openBoards }, { label: '📚  ' + A.i18n.t('Librerías de Arduino'), action: openLibs });
+    items.push('-', { label: '⬇  ' + A.i18n.t('Buscar actualizaciones'), action: () => A.features.checkUpdates(true) });
+    A.menu(r.right - 290, r.bottom + 4, items);
+  }
 
   async function runAll() {
     if (A.app.config && !hasTech('arduino')) return runActive();
@@ -990,6 +1026,10 @@
     window.arpy.on('fs:changed', () => reloadPreview());
     A.$('#btnStopPy').addEventListener('click', () => A.api('python:stop'));
     A.$('#btnRunAll').addEventListener('click', runAll);
+    A.$('#btnRunMenu').addEventListener('click', runMenu);
+    A.$('#btnMore').addEventListener('click', moreMenu);
+    A.$('#btnUndo').addEventListener('click', () => A.editor.undo());
+    A.$('#btnRedo').addEventListener('click', () => A.editor.redo());
     A.$('#btnLibs').addEventListener('click', openLibs);
     A.$('#btnBoards').addEventListener('click', openBoards);
     A.$('#btnSaveVersion').addEventListener('click', saveVersion);
@@ -1153,5 +1193,5 @@
     showWelcome();
   }
 
-  Object.assign(A.app, { runActive, openPreview, hasTech, welcomeTab, openProject, verify, upload, runAll, init, openBoards, openHistory, saveVersion, quickOpen, applyTheme, updatePyEnv, setBoard, runPython, pythonStopped, refreshPorts, openSettings });
+  Object.assign(A.app, { updateRunLabel, runActive, openPreview, hasTech, welcomeTab, openProject, verify, upload, runAll, init, openBoards, openHistory, saveVersion, quickOpen, applyTheme, updatePyEnv, setBoard, runPython, pythonStopped, refreshPorts, openSettings });
 })();

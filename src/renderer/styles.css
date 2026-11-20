@@ -813,3 +813,42 @@ body.no-python .py-only, body.no-preview .preview-only { display: none !importan
 .ai-key-warn.hidden { display: none; }
 .field .ai-prov .ap-head input[type=radio] { width: 16px; height: 16px; flex: none; margin: 0; padding: 0; }
 .ai-prov .ap-head b { font-size: 13px; }
+
+/* ---------- Barra superior (1.2): grupos con nombre, claros para principiantes ---------- */
+#toolbar { gap: 10px; flex-wrap: nowrap; overflow: hidden; }
+#toolbar > * { flex: none; }
+#toolbar > .spacer { flex: 1 1 0; min-width: 0; }
+.tb-card { display: flex; align-items: center; gap: 6px; padding: 3px 6px 3px 4px; border: 1px solid var(--line-2); border-radius: 10px; background: color-mix(in srgb, var(--bg-3) 55%, transparent); }
+.tb-cap { writing-mode: vertical-rl; transform: rotate(180deg); font-size: 9.5px; font-weight: 700; letter-spacing: .9px; text-transform: uppercase; color: var(--text-3); padding: 0 2px; border-right: 1px solid var(--line-2); padding-left: 4px; line-height: 1; }
+.tb-edit { gap: 2px; }
+.icon-btn.flip svg { transform: scaleX(-1); }
+.save-state { font-size: 11.5px; color: var(--text-3); margin-left: 6px; white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+.save-state::before { content: ''; width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.save-state.saving::before { background: var(--warn); }
+.split { display: inline-flex; }
+.split .btn.run:first-child:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.split .btn.caret { border-top-left-radius: 0; border-bottom-left-radius: 0; padding: 0 6px; border-left: 1px solid rgba(0,0,0,.25); }
+body.no-arduino .split .btn.run:first-child, body.no-python .split .btn.run:first-child { border-radius: var(--radius); }
+.btn.caret svg { transform: rotate(90deg); width: 13px; height: 13px; }
+.btn.run { background: linear-gradient(180deg, #2fa866, #238a52); border-color: #34b872; color: #fff; }
+.btn.run:hover:not(:disabled) { background: linear-gradient(180deg, #36b870, #279a5b); }
+#runLabel { max-width: 170px; overflow: hidden; text-overflow: ellipsis; }
+.tb-right { display: flex; align-items: center; gap: 4px; }
+#btnSettings { padding: 0 10px; }
+@media (max-width: 1750px) { #btnSettings .lbl { display: none; } #btnSettings { gap: 0; padding: 0 8px; } }
+@media (max-width: 1600px) { .save-state { font-size: 0; gap: 0; } .save-state::before { width: 8px; height: 8px; } }
+@media (max-width: 1500px) { #toolbar .sel select { max-width: 150px; } }
+@media (max-width: 1500px) { .tb-cap { display: none; } }
+@media (max-width: 1150px) {
+  #btnPortHelp, #toolbar .sel .ico { display: none; }
+  #toolbar .tb-card .sel select { max-width: 92px; }
+  #runLabel { max-width: 70px; }
+  #toolbar { gap: 6px; padding: 8px; }
+  .tb-card { gap: 4px; }
+}
+@media (max-width: 1350px) {
+  #btnVerify, #btnUpload { font-size: 0; gap: 0; padding: 0 9px; }
+  #runLabel { max-width: 90px; }
+  #toolbar .sel select { max-width: 120px; }
+  .brand { font-size: 0; gap: 0; margin-right: 0; }
+}

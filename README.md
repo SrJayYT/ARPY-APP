@@ -111,6 +111,10 @@ flowchart LR
 - **Export / import** projects as `.zip`.
 - **Auto-updates** from GitHub Releases. First-run **setup wizard**.
 - **10 themes**, each with a dark and a light version. Pick one for the app and another for the editor/terminal.
+- **Autosave, always on**: every change is written to disk as you type, so a crash, a power cut or closing the window never loses work. **Undo / Redo** buttons in the top bar.
+- **The AI organizes your project**: it can create folders, move and rename files or whole folders, and delete them. Deleted items go to the project trash, and every action has an **Undo** button.
+- **Clear top bar**: the Arduino tools (board, port, **Check**, **Upload to board**) and the **Run** button, which shows the file it will run (e.g. *Run main.py*).
+- **Update notice** when you open the app, if a newer version is on GitHub.
 - **Lite mode** for 8 GB laptops.
 
 </td></tr>
@@ -400,6 +404,10 @@ It's built with Electron, but only Windows is tested and packaged right now.
 - **Exportar / importar** proyectos en `.zip`.
 - **Actualizaciones automáticas** desde GitHub. **Asistente de primer uso**.
 - **10 temas**, cada uno con versión oscura y clara. Uno para la app y otro distinto para el editor/terminal.
+- **Guardado automático, siempre**: cada cambio se escribe al disco mientras escribes; si la app se cierra de golpe, se va la luz o cierras la ventana, no pierdes nada. Botones de **Deshacer / Rehacer** en la barra.
+- **La IA organiza tu proyecto**: crea carpetas, mueve y renombra archivos o carpetas enteras, y las borra. Lo borrado va a la papelera del proyecto y cada acción tiene su botón **Deshacer**.
+- **Barra superior clara**: las herramientas de Arduino (placa, puerto, **Comprobar**, **Subir a la placa**) y el botón **Ejecutar**, que dice qué archivo va a ejecutar (por ejemplo *Ejecutar main.py*).
+- **Aviso de versión nueva** al abrir la app, si hay una más reciente en GitHub.
 - **Modo ligero** para laptops de 8 GB.
 
 </td></tr>

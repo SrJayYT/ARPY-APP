@@ -158,7 +158,7 @@ A.menu = (x, y, items) => {
   m.style.left = Math.min(x, innerWidth - r.width - 8) + 'px';
   m.style.top = Math.min(y, innerHeight - r.height - 8) + 'px';
 };
-document.addEventListener('mousedown', (e) => { if (!e.target.closest('#ctxMenu')) A.$('#ctxMenu').classList.add('hidden'); });
+document.addEventListener('mousedown', (e) => { if (!(e.target.closest && e.target.closest('#ctxMenu'))) A.$('#ctxMenu').classList.add('hidden'); });
 
 A.fileIcon = (name, dir) => {
   if (dir) return '<span class="fi dir">' + A.icon('folder') + '</span>';

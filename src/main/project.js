@@ -585,7 +585,55 @@ function restore(root, id) {
   return b;
 }
 
+// Rutas que ni la IA ni nadie debe mover o borrar: la raíz, el archivo .arpy y la carpeta interna .arpy
+function isProtected(root, rel) {
+  const r = path.relative(root, resolveIn(root, rel)).split(path.sep).join('/');
+  return !r || r === '.arpy' || r.startsWith('.arpy/') || r === '.git' || r.startsWith('.git/') || (!r.includes('/') && /\.arpy$/i.test(r));
+}
+
+// Papelera del proyecto: lo borrado (archivo o carpeta entera) se guarda en .arpy/papelera y se puede recuperar.
+function trash(root, rel) {
+  if (isProtected(root, rel)) throw new Error(`No se puede borrar ${rel || 'la carpeta del proyecto'}`);
+  const full = resolveIn(root, rel);
+  if (!fs.existsSync(full)) throw new Error(`No existe: ${rel}`);
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const dir = path.join(arpyDir(root), 'papelera', id);
+  fs.mkdirSync(dir, { recursive: true });
+  const isDir = fs.statSync(full).isDirectory();
+  try { fs.renameSync(full, path.join(dir, 'item')); } catch {
+    fs.cpSync(full, path.join(dir, 'item'), { recursive: true });
+    fs.rmSync(full, { recursive: true, force: true });
+  }
+  fs.writeFileSync(path.join(dir, 'info.json'), JSON.stringify({ path: rel, isDir, at: Date.now() }));
+  return id;
+}
+
+function untrash(root, id) {
+  if (!/^[\w-]+$/.test(id)) throw new Error('id inválido');
+  const dir = path.join(arpyDir(root), 'papelera', id);
+  const info = JSON.parse(fs.readFileSync(path.join(dir, 'info.json'), 'utf8'));
+  const full = resolveIn(root, info.path);
+  if (fs.existsSync(full)) throw new Error(`Ya existe ${info.path}: muévelo o bórralo antes de recuperar`);
+  fs.mkdirSync(path.dirname(full), { recursive: true });
+  try { fs.renameSync(path.join(dir, 'item'), full); } catch { fs.cpSync(path.join(dir, 'item'), full, { recursive: true }); }
+  fs.rmSync(dir, { recursive: true, force: true });
+  return info;
+}
+
+// Mover o renombrar un archivo o carpeta dentro del proyecto.
+function move(root, from, to) {
+  if (isProtected(root, from) || isProtected(root, to)) throw new Error(`No se puede mover ${from}`);
+  const src = resolveIn(root, from);
+  const dest = resolveIn(root, to);
+  if (!fs.existsSync(src)) throw new Error(`No existe: ${from}`);
+  if (fs.existsSync(dest)) throw new Error(`Ya existe: ${to}`);
+  if ((dest + path.sep).startsWith(src + path.sep)) throw new Error('No se puede mover una carpeta dentro de sí misma');
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.renameSync(src, dest);
+}
+
 module.exports = {
+  isProtected, trash, untrash, move,
   projectFile, loadWiring, saveWiring, setTechs, scaffold, getActiveChat, setActiveChat, listUI, loadUI, saveUI,
   info,
   resolveIn, readConfig, writeConfig, isProject, adopt, tree, snapshot, create,

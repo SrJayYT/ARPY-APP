@@ -6,6 +6,9 @@
   async function refresh() {
     let tree = [];
     try { tree = await A.api('fs:tree'); } catch { return; }
+    // El archivo principal <nombre>.arpy es la "llave" del proyecto: existe en la carpeta
+    // (para abrirlo con doble clic) pero no se muestra aquí, para que nadie lo edite por error.
+    tree = tree.filter((n) => n.dir || !/\.arpy$/i.test(n.name));
     A.app.files = flatten(tree);
     const host = A.$('#tree');
     host.innerHTML = '';

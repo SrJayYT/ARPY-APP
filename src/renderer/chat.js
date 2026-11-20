@@ -17,6 +17,8 @@
     '<<<FILE path="(?<fpath>[^"]+)">>>\\r?\\n?(?<fcontent>[\\s\\S]*?)\\r?\\n?<<<END FILE>>>',
     '<<<EDIT path="(?<epath>[^"]+)">>>\\r?\\n?(?<ebody>[\\s\\S]*?)<<<END EDIT>>>',
     '<<<DELETE path="(?<del>[^"]+)">>>',
+    '<<<MKDIR path="(?<mkdir>[^"]+)">>>',
+    '<<<MOVE from="(?<mfrom>[^"]+)" to="(?<mto>[^"]+)">>>',
     '<<<LIB name="(?<lib>[^"]+)">>>',
     '<<<PIP name="(?<pip>[^"]+)">>>',
     '<<<BOARD fqbn="(?<board>[^"]+)">>>',
@@ -48,7 +50,9 @@
         HUNK_RE.lastIndex = 0;
         while ((h = HUNK_RE.exec(g.ebody))) hunks.push({ search: h[1], replace: h[2] });
         a = { type: 'edit', path: cleanPath(g.epath), hunks };
-      } else if (g.del) a = { type: 'delete', path: cleanPath(g.del) };
+      } else if (g.del) a = { type: 'delete', path: cleanPath(g.del).replace(/\/$/, '') };
+      else if (g.mkdir) a = { type: 'mkdir', path: cleanPath(g.mkdir).replace(/\/$/, '') };
+      else if (g.mfrom) a = { type: 'move', from: cleanPath(g.mfrom).replace(/\/$/, ''), to: cleanPath(g.mto).replace(/\/$/, '') };
       else if (g.lib) a = { type: 'lib', name: g.lib.trim() };
       else if (g.pip) a = { type: 'pip', name: g.pip.trim() };
       else if (g.board) a = { type: 'board', fqbn: g.board.trim() };
@@ -241,9 +245,19 @@
         }
       }
     } else if (a.type === 'delete') {
-      head.innerHTML = A.fileIcon(a.path);
-      head.append(A.el('span', { class: 'path' }, a.path), A.el('span', { class: 'kind del' }, 'eliminar'), btns);
-      if (!partial && !applied) btns.append(btn('Eliminar', '', () => apply(m, i)));
+      const isDir = !/\.[\w]+$/.test(a.path.split('/').pop());
+      head.innerHTML = A.fileIcon(a.path.split('/').pop(), isDir);
+      head.append(A.el('span', { class: 'path' }, a.path), A.el('span', { class: 'kind del' }, applied ? 'eliminado' : 'eliminar'), btns);
+      if (!partial) btns.append(applied ? btn('Deshacer', 'ghost', () => undo(m, i), 'undo', 'Recuperar de la papelera del proyecto') : btn('Eliminar', '', () => apply(m, i), 'trash'));
+    } else if (a.type === 'mkdir') {
+      head.innerHTML = A.fileIcon(a.path, true);
+      head.append(A.el('span', { class: 'path' }, a.path + '/'), A.el('span', { class: 'kind new' }, 'carpeta nueva'), btns);
+      if (!partial) btns.append(applied ? btn('Deshacer', 'ghost', () => undo(m, i), 'undo') : btn('Crear', 'ino', () => apply(m, i), 'folderPlus'));
+    } else if (a.type === 'move') {
+      const name = a.from.split('/').pop();
+      head.innerHTML = A.fileIcon(name, !/\.[\w]+$/.test(name));
+      head.append(A.el('span', { class: 'path', title: `${a.from} → ${a.to}` }, `${a.from} → ${a.to}`), A.el('span', { class: 'kind edit' }, applied ? 'movido' : 'mover'), btns);
+      if (!partial) btns.append(applied ? btn('Deshacer', 'ghost', () => undo(m, i), 'undo') : btn('Mover', 'ino', () => apply(m, i), 'check'));
     } else if (a.type === 'lib') {
       head.append(A.el('span', { class: 'kind lib' }, 'librería'), A.el('span', { class: 'path' }, a.name), btns);
       if (!partial) btns.append(btn(applied ? 'Instalada' : 'Instalar', applied ? 'ghost' : 'ino', () => apply(m, i)));
@@ -298,9 +312,22 @@
         const dir = a.path.includes('/') ? a.path.slice(0, a.path.lastIndexOf('/')) : '';
         if (dir) A.explorer.expand(dir);
       } else if (a.type === 'delete') {
-        m.applied[i] = await A.api('fs:backup', a.path);
-        await A.api('fs:delete', a.path);
-        if (A.editor.isOpen(a.path)) A.editor.close(a.path);
+        await A.editor.saveAll();
+        const id = await A.api('fs:trash', a.path);
+        A.editor.closeUnder(a.path);
+        m.applied[i] = { t: 'trash', id };
+      } else if (a.type === 'mkdir') {
+        const existed = await A.api('fs:exists', a.path);
+        await A.api('fs:mkdir', a.path);
+        m.applied[i] = { t: 'mkdir', path: a.path, existed };
+        A.explorer.expand(a.path);
+      } else if (a.type === 'move') {
+        await A.editor.saveAll();
+        await A.api('fs:move', a.from, a.to);
+        A.editor.renamed(a.from, a.to);
+        m.applied[i] = { t: 'move', from: a.from, to: a.to };
+        const dir = a.to.includes('/') ? a.to.slice(0, a.to.lastIndexOf('/')) : '';
+        if (dir) A.explorer.expand(dir);
       } else if (a.type === 'lib') {
         A.panels.show('output');
         const r = await A.api('arduino:lib-install', a.name);
@@ -315,7 +342,7 @@
         await A.app.setBoard(a.fqbn);
         m.applied[i] = true;
       }
-      if (!quiet) A.toast(`✔ ${a.path || a.name || a.fqbn}`, 'ok');
+      if (!quiet) A.toast(`✔ ${a.path || (a.to ? `${a.from} → ${a.to}` : '') || a.name || a.fqbn}`, 'ok');
     } catch (e) {
       A.toast(e.message, 'err');
       persist();
@@ -347,6 +374,21 @@
 
   async function undo(m, i) {
     const id = m.applied && m.applied[i];
+    // Acciones de carpetas y papelera
+    if (id && typeof id === 'object') {
+      try {
+        let what = '';
+        if (id.t === 'trash') what = (await A.api('fs:untrash', id.id)).path;
+        else if (id.t === 'move') { await A.editor.saveAll(); await A.api('fs:move', id.to, id.from); A.editor.renamed(id.to, id.from); what = id.from; }
+        else if (id.t === 'mkdir') { if (!id.existed) await A.api('fs:rmdir-empty', id.path); what = id.path; }
+        delete m.applied[i];
+        persist();
+        rerender(m);
+        A.explorer.refresh();
+        A.toast(`Revertido: ${what}`);
+      } catch (e) { A.toast(e.message, 'err'); }
+      return;
+    }
     if (typeof id !== 'string') return;
     try {
       const b = await A.api('fs:restore', id);
@@ -831,5 +873,7 @@
   const ARD_CHIPS = ['Diagrama de conexiones', 'Nuevo sensor'];
   for (const [label, prompt] of CHIPS) A.$('#chips').append(A.el('button', { class: ARD_CHIPS.includes(label) ? 'ard-only' : label === 'App Python' ? 'py-only' : '', onclick: () => send(prompt) }, label));
 
-  A.chat = { applyHunks, send, load, flush, beforeClose, renderCtx, openMemory, newChat, get busy() { return busy; } };
+  // __test: solo para pruebas automáticas (añade una respuesta de la IA sin llamarla)
+  const __test = { addModel(text) { const m = { id: uid(), role: 'model', text, ts: Date.now() }; messages.push(m); A.$('#messages').append(renderMessage(m)); return m; }, apply, undo, applyAll };
+  A.chat = { __test, applyHunks, send, load, flush, beforeClose, renderCtx, openMemory, newChat, get busy() { return busy; } };
 })();

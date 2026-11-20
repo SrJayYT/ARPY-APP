@@ -51,8 +51,8 @@ const logTo = (channel) => (text, stream) => send('log', { channel, text, stream
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 1500,
-    height: 920,
+    width: TEST_RUN && process.env.ARPY_SIZE ? +process.env.ARPY_SIZE.split("x")[0] : 1500,
+    height: TEST_RUN && process.env.ARPY_SIZE ? +process.env.ARPY_SIZE.split("x")[1] : 920,
     minWidth: 1000,
     minHeight: 640,
     backgroundColor: '#0b0f14',
@@ -75,8 +75,16 @@ function createWindow() {
     if (closing) return;
     e.preventDefault();
     closing = true;
-    const flush = win.webContents.executeJavaScript('window.A && A.chat && A.chat.flush ? A.chat.flush().then(() => true) : true', true).catch(() => true);
+    const flush = win.webContents.executeJavaScript(SAVE_ALL_JS, true).catch(() => true);
     Promise.race([flush, new Promise((r) => setTimeout(r, 2000))]).finally(() => { if (!win.isDestroyed()) win.close(); });
+  });
+  // Windows se apaga o cierra sesión: guardar todo ya.
+  win.on('session-end', () => { saveEverything(); });
+  // Si la ventana se cuelga o su proceso muere, se intenta guardar y se recarga (los archivos ya se guardan solos).
+  win.on('unresponsive', () => { saveEverything(); });
+  win.webContents.on('render-process-gone', (_e, d) => {
+    console.log('GONE', JSON.stringify(d));
+    if (d.reason !== 'clean-exit' && !closing && !win.isDestroyed()) setTimeout(() => { if (!win.isDestroyed()) win.reload(); }, 800);
   });
   Menu.setApplicationMenu(null);
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
@@ -88,6 +96,17 @@ function createWindow() {
     if (input.type === 'keyDown' && input.key === 'F12') win.webContents.toggleDevTools();
   });
 }
+
+// Guarda archivos abiertos y la conversación del chat (si la ventana sigue viva).
+const SAVE_ALL_JS = 'Promise.all([window.A && A.editor && A.editor.saveAll ? A.editor.saveAll().catch(() => 0) : 0, window.A && A.chat && A.chat.flush ? A.chat.flush().catch(() => 0) : 0]).then(() => true)';
+function saveEverything() {
+  if (!win || win.isDestroyed() || win.webContents.isCrashed()) return Promise.resolve();
+  return Promise.race([win.webContents.executeJavaScript(SAVE_ALL_JS, true).catch(() => 0), new Promise((r) => setTimeout(r, 2000))]);
+}
+process.on('uncaughtException', (e) => {
+  console.error('Error inesperado:', e);
+  saveEverything();
+});
 
 function watch(dir) {
   if (watcher) { watcher.close(); watcher = null; }
@@ -224,6 +243,10 @@ h('fs:write', (rel, content) => {
   return true;
 });
 h('fs:mkdir', (rel) => fs.mkdirSync(project.resolveIn(need(), rel), { recursive: true }));
+h('fs:trash', (rel) => project.trash(need(), rel));
+h('fs:untrash', (id) => project.untrash(need(), id));
+h('fs:move', (from, to) => project.move(need(), from, to));
+h('fs:rmdir-empty', (rel) => { const full = project.resolveIn(need(), rel); if (!project.isProtected(need(), rel) && fs.existsSync(full) && !fs.readdirSync(full).length) fs.rmdirSync(full); });
 h('fs:rename', (from, to) => {
   const dest = project.resolveIn(need(), to);
   fs.mkdirSync(path.dirname(dest), { recursive: true });

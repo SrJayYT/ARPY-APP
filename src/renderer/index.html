@@ -48,39 +48,52 @@
   <div id="app">
     <header id="toolbar">
       <div class="brand"><span class="logo"></span>ARPY<b>Copiler</b></div>
-      <div class="tb-group ard-only">
-        <label class="sel" title="Placa">
+      <div class="tb-group tb-edit">
+        <button id="btnUndo" class="icon-btn" title="Deshacer (Ctrl+Z)" disabled><span data-icon="undo"></span></button>
+        <button id="btnRedo" class="icon-btn flip" title="Rehacer (Ctrl+Y)" disabled><span data-icon="undo"></span></button>
+        <span id="saveState" class="save-state" title="Tus archivos se guardan solos mientras escribes">Guardado</span>
+      </div>
+      <div class="tb-card ard-only">
+        <span class="tb-cap">Arduino</span>
+        <label class="sel" title="Placa: el modelo de tu Arduino">
           <span class="ico" data-icon="cpu"></span>
           <select id="boardSelect"></select>
         </label>
-        <label class="sel" title="Puerto">
+        <label class="sel" title="Puerto: el cable USB donde está conectada la placa">
           <span class="ico" data-icon="plug"></span>
           <select id="portSelect"></select>
         </label>
         <button id="btnRefreshPorts" class="icon-btn" title="Buscar placas conectadas"><span data-icon="refresh"></span></button>
         <button id="btnPortHelp" class="icon-btn" title="¿No aparece tu placa? Revisar drivers"><span data-icon="help"></span></button>
+        <button id="btnVerify" class="btn" title="Revisa que el código de Arduino no tenga errores. No hace falta conectar la placa. (Ctrl+R)"><span data-icon="check"></span>Comprobar</button>
+        <button id="btnUpload" class="btn ino" title="Envía el programa a la placa conectada por USB (Ctrl+U)"><span data-icon="upload"></span>Subir a la placa</button>
       </div>
-      <div class="tb-group ard-only">
-        <button id="btnVerify" class="btn" title="Verificar / compilar (Ctrl+R)"><span data-icon="check"></span>Verificar</button>
-        <button id="btnUpload" class="btn ino" title="Compilar y subir a la placa (Ctrl+U)"><span data-icon="upload"></span>Subir</button>
+      <div class="tb-card">
+        <span class="tb-cap">Programa</span>
+        <div class="split">
+          <button id="btnRunPy" class="btn run" title="Ejecutar el archivo abierto (F5)"><span data-icon="play"></span><span id="runLabel">Ejecutar</span></button>
+          <button id="btnRunMenu" class="btn run caret ard-only py-only" title="Más formas de ejecutar"><span data-icon="chev"></span></button>
+        </div>
+        <button id="btnStopPy" class="icon-btn" title="Detener (Shift+F5)" disabled><span data-icon="stop"></span></button>
       </div>
-      <div class="tb-group">
-        <button id="btnRunPy" class="btn py" title="Ejecutar el archivo abierto: Python, JavaScript, Java, PHP o SQL (F5)"><span data-icon="play"></span>Ejecutar</button>
-        <button id="btnStopPy" class="icon-btn" title="Detener Python (Shift+F5)" disabled><span data-icon="stop"></span></button>
-        <button id="btnRunAll" class="btn all ard-only" title="Subir sketch y luego ejecutar Python (Ctrl+F5)"><span data-icon="zap"></span>Subir + Ejecutar</button>
-      </div>
-      <div class="tb-group">
+      <div class="tb-group tb-tools">
         <button id="btnWiring" class="btn ghost ard-only" title="Editor visual de conexiones: coloca sensores y LEDs sobre la placa"><span data-icon="cable"></span>Conexiones</button>
         <button id="btnDesigner" class="btn ghost py-only" title="Diseñador de interfaces Python: arrastra botones y gráficas"><span data-icon="layout"></span>Diseñar app</button>
         <button id="btnPreview" class="btn ghost preview-only" title="Vista previa de la página web (HTML, EJS o PHP)"><span data-icon="eye"></span>Vista previa</button>
       </div>
       <div class="spacer"></div>
-      <button id="btnSaveVersion" class="icon-btn has-dot" title="Guardar una versión del proyecto (Ctrl+Shift+S)"><span data-icon="gitCommit"></span><i id="gitDot" class="dot"></i></button>
-      <button id="btnHistory" class="icon-btn" title="Historial de versiones"><span data-icon="history"></span></button>
-      <button id="btnBoards" class="icon-btn" title="Gestor de placas"><span data-icon="cpu"></span></button>
-      <button id="btnLibs" class="icon-btn" title="Librerías de Arduino"><span data-icon="book"></span></button>
-      <button id="btnTheme" class="icon-btn" title="Tema claro / oscuro"><span data-icon="sun"></span></button>
-      <button id="btnSettings" class="icon-btn" title="Configuración"><span data-icon="settings"></span></button>
+      <div class="tb-right">
+        <button id="btnMore" class="icon-btn has-dot" title="Más: versiones, placas y librerías"><span data-icon="more"></span><i id="gitDot" class="dot"></i></button>
+        <button id="btnTheme" class="icon-btn" title="Tema claro / oscuro"><span data-icon="sun"></span></button>
+        <button id="btnSettings" class="btn ghost" title="Configuración: IA, temas, Python, arduino-cli…"><span data-icon="settings"></span><span class="lbl">Configuración</span></button>
+      </div>
+      <div hidden>
+        <button id="btnRunAll"></button>
+        <button id="btnSaveVersion"></button>
+        <button id="btnHistory"></button>
+        <button id="btnBoards"></button>
+        <button id="btnLibs"></button>
+      </div>
     </header>
 
     <main id="workspace">

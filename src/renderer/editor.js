@@ -118,7 +118,7 @@
       }
     });
 
-    editor.onDidChangeModelContent(() => refreshDirty());
+    editor.onDidChangeModelContent(() => { refreshDirty(); scheduleAutosave(); });
     editor.onDidChangeCursorPosition((e) => {
       A.$('#stCursor').textContent = `Ln ${e.position.lineNumber}, Col ${e.position.column}`;
     });
@@ -298,10 +298,42 @@
   function key(path) { return monaco.Uri.parse('arpy:///' + path); }
 
   function refreshDirty() {
+    let any = false;
     for (const [p, t] of tabs) {
       const dirty = t.model.getAlternativeVersionId() !== t.saved;
+      any = any || dirty;
       const tab = A.$(`.tab[data-path="${CSS.escape(p)}"]`);
       if (tab) tab.classList.toggle('dirty', dirty);
+    }
+    const st = A.$('#saveState');
+    if (st) { st.textContent = A.i18n.t(any ? 'Guardando…' : 'Guardado'); st.classList.toggle('saving', any); }
+    refreshUndo();
+  }
+
+  // ---- Deshacer / Rehacer (botones de la barra) ----
+  function refreshUndo() {
+    const m = editor && editor.getModel();
+    const u = A.$('#btnUndo'), r = A.$('#btnRedo');
+    if (u) u.disabled = !(m && m.canUndo());
+    if (r) r.disabled = !(m && m.canRedo());
+  }
+  function undo() { if (!editor || !editor.getModel()) return; editor.focus(); editor.trigger('toolbar', 'undo', null); refreshUndo(); }
+  function redo() { if (!editor || !editor.getModel()) return; editor.focus(); editor.trigger('toolbar', 'redo', null); refreshUndo(); }
+
+  // ---- Guardado automático: siempre activo. Cada cambio se escribe al disco ~0,8 s después,
+  // así un cierre inesperado (apagón, cuelgue, cerrar la ventana) no pierde nada.
+  let autosaveTimer = null;
+  function scheduleAutosave() {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = setTimeout(autosaveNow, 800);
+  }
+  async function autosaveNow() {
+    clearTimeout(autosaveTimer);
+    autosaveTimer = null;
+    for (const [p, t] of tabs) {
+      if (preview && preview.path === p) continue; // la IA está mostrando cambios en vivo: se guarda al terminar
+      if (t.model.isDisposed() || t.model.getAlternativeVersionId() === t.saved) continue;
+      try { await save(p); } catch (e) { console.warn('autosave', p, e.message); }
     }
   }
 
@@ -323,6 +355,7 @@
     A.$('#emptyEditor').classList.toggle('hidden', !!active);
     A.explorer && A.explorer.markActive(active);
     A.chat && A.chat.renderCtx();
+    A.app && A.app.updateRunLabel && A.app.updateRunLabel();
   }
 
   async function open(path, { line } = {}) {
@@ -348,6 +381,7 @@
     }
     editor.focus();
     renderTabs();
+    refreshUndo();
   }
 
   async function close(path) {
@@ -365,6 +399,18 @@
       editor.setModel(null);
     }
     renderTabs();
+  }
+
+  // Cierra sin preguntar las pestañas de un archivo o de todo lo que hay dentro de una carpeta (ya se guardaron).
+  function closeUnder(rel) {
+    for (const p of [...tabs.keys()]) {
+      if (p !== rel && !p.startsWith(rel + '/')) continue;
+      tabs.get(p).model.dispose();
+      tabs.delete(p);
+      if (active === p) active = null;
+    }
+    if (!active) active = [...tabs.keys()].pop() || null;
+    if (active) open(active); else { if (editor) editor.setModel(null); renderTabs(); }
   }
 
   function closeAll() {
@@ -464,6 +510,7 @@
     } else editor.setModel(null);
     p.model.dispose();
     renderTabs();
+    scheduleAutosave();
   }
 
   // Tras aplicar: resalta en el archivo real lo que se agregó (verde) y dónde se quitó (marca roja).
@@ -590,7 +637,7 @@
   function setFontSize(n) { editor && editor.updateOptions({ fontSize: n }); }
 
   A.editor = {
-    initMonaco, open, close, closeAll, save, saveAll, applyContent, syncFromDisk, renamed,
+    initMonaco, open, close, closeAll, closeUnder, save, saveAll, undo, redo, autosaveNow, applyContent, syncFromDisk, renamed,
     liveContext, setMarkers, showDiff, setFontSize, setTheme, setLite,
     contentOf, livePreview, previewActions, endPreview, highlightChanges, get previewing() { return !!preview; }, breakpoints, toggleBreakpoint,
     setAiComplete: (on) => { aiCompleteOn = !!on; },

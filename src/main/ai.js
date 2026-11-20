@@ -72,7 +72,11 @@ contenido completo del archivo
 
 - El sketch principal de Arduino es "${sketch}/${sketch.split('/').pop()}.ino". Archivos .h/.cpp extra van en esa misma carpeta.
 - El programa Python principal es "${cfg.pythonMain || 'python/main.py'}". Puedes crear más módulos en "python/".
-- Para borrar un archivo: <<<DELETE path="ruta">>>
+- Puedes organizar el proyecto como quieras (crear, mover, renombrar y borrar archivos y carpetas). Cada acción se puede deshacer:
+  · Crear una carpeta (vacía): <<<MKDIR path="ruta/carpeta">>> (para crear archivos dentro no hace falta: FILE crea las carpetas solo)
+  · Mover o renombrar un archivo o una carpeta entera: <<<MOVE from="ruta/actual" to="ruta/nueva">>>
+  · Borrar un archivo o una carpeta con todo su contenido: <<<DELETE path="ruta">>> (va a la papelera del proyecto)
+  · Nunca muevas ni borres el archivo .arpy del proyecto ni la carpeta .arpy. Si mueves el programa principal, avisa al usuario.
 - Si el sketch necesita una librería de Arduino: <<<LIB name="Nombre exacto de la librería">>>
 - Si Python necesita un paquete: <<<PIP name="paquete">>> (y añádelo a python/requirements.txt)
 - Para cambiar de placa: <<<BOARD fqbn="arduino:...">>>
