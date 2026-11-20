@@ -1,6 +1,6 @@
 {
   "name": "arpy-copiler",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "IDE todo-en-uno para Arduino + Python con IA integrada",
   "main": "src/main/main.js",
   "scripts": {
