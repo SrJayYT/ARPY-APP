@@ -6,8 +6,43 @@
     content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; worker-src 'self' blob:; connect-src 'self';" />
   <title>ARPY Copiler</title>
   <link rel="stylesheet" href="styles.css" />
+  <script src="intro.js"></script>
 </head>
 <body>
+  <div id="intro" aria-hidden="true">
+    <svg class="intro-traces" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid slice">
+      <g fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path class="t t1" d="M0 140 H260 L330 210 H470 L540 280" />
+        <path class="t t2" d="M1200 120 H930 L870 180 H720 L660 260" />
+        <path class="t t3" d="M0 560 H210 L300 470 H465" />
+        <path class="t t4" d="M1200 590 H990 L900 500 H735" />
+        <path class="t t5" d="M600 0 V120 L640 160 V215" />
+        <path class="t t6" d="M600 700 V600 L560 560 V515" />
+      </g>
+      <g class="pads">
+        <circle class="p p1" cx="540" cy="280" r="5" />
+        <circle class="p p2" cx="660" cy="260" r="5" />
+        <circle class="p p3" cx="465" cy="470" r="5" />
+        <circle class="p p4" cx="735" cy="500" r="5" />
+        <circle class="p p5" cx="640" cy="215" r="5" />
+        <circle class="p p6" cx="560" cy="515" r="5" />
+      </g>
+    </svg>
+    <div class="intro-center">
+      <div class="intro-logo">
+        <span class="il-ring"></span>
+        <span class="il-ring r2"></span>
+        <span class="il-tile"><b>AP</b></span>
+      </div>
+      <h1 class="intro-title">
+        <span class="w1"><i style="--i:0">A</i><i style="--i:1">R</i><i style="--i:2">P</i><i style="--i:3">Y</i></span>
+        <span class="w2">Copiler</span>
+      </h1>
+      <p class="intro-tag"><span class="c1">Arduino</span> · <span class="c2">Python</span> · <span class="c3">IA</span></p>
+      <div class="intro-bar"><i></i></div>
+      <small id="introStatus">Cargando editor…</small>
+    </div>
+  </div>
   <div id="app">
     <header id="toolbar">
       <div class="brand"><span class="logo"></span>ARPY<b>Copiler</b></div>

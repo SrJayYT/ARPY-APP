@@ -67,6 +67,23 @@ La IA **ve el proyecto entero en cada mensaje**: el sketch, los scripts Python, 
 
 > **¿La placa no aparece en los puertos?** Las placas clon con chip **CH340** necesitan instalar el driver CH340. Las placas originales de Arduino no lo necesitan.
 
+## Requisitos y rendimiento
+
+- Windows 10 u 11 de 64 bits. **Funciona en laptops con 8 GB de RAM** (incluso DDR3).
+- En equipos con **8 GB o menos, o con 4 núcleos o menos**, la app activa sola el **modo ligero**:
+  - dibuja sin GPU;
+  - quita el minimapa del editor;
+  - reduce las animaciones;
+  - no hace consultas en segundo plano mientras la ventana está minimizada.
+- Uso medido con un proyecto abierto:
+
+| Modo | Memoria privada |
+|---|---|
+| Ligero | ~220 MB |
+| Completo | ~420–550 MB |
+
+El modo se cambia en ⚙ **Configuración → Rendimiento**. Ahí mismo se puede desactivar la animación de apertura.
+
 ## Proyectos `.arpy`
 
 <img src="docs/nuevo-proyecto.png" alt="Pantalla de nuevo proyecto: nombre, ubicación, placa y plantilla" width="720" />

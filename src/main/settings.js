@@ -11,6 +11,8 @@ const DEFAULTS = {
   fontSize: 14,
   recentProjects: [],
   lastProject: '',
+  perfMode: 'auto', // auto | lite | full
+  intro: true,
 };
 
 function settingsFile() {
@@ -27,7 +29,7 @@ function load() {
   if (cache) return cache;
   let data = {};
   try {
-    data = JSON.parse(fs.readFileSync(settingsFile(), 'utf8'));
+    data = JSON.parse(fs.readFileSync(settingsFile(), 'utf8').replace(/^﻿/, '')); // tolera BOM
   } catch {}
   cache = { ...DEFAULTS, ...data };
   if (cache.geminiApiKey === builtin) cache.geminiApiKey = ''; // nunca guardar la integrada

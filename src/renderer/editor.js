@@ -267,6 +267,21 @@
     monaco.languages.registerInlineCompletionsProvider('python', provider);
   }
 
+  // Modo ligero: sin minimapa ni animaciones suaves (menos CPU/RAM en equipos modestos).
+  function setLite(on) {
+    if (!editor) return;
+    editor.updateOptions({
+      minimap: { enabled: !on, scale: 1, renderCharacters: false },
+      smoothScrolling: !on,
+      cursorSmoothCaretAnimation: on ? 'off' : 'on',
+      cursorBlinking: on ? 'blink' : 'smooth',
+      renderLineHighlight: on ? 'line' : 'all',
+      occurrencesHighlight: on ? 'off' : 'singleFile',
+      guides: { bracketPairs: !on, indentation: true },
+      stickyScroll: { enabled: !on },
+    });
+  }
+
   function setTheme(theme) {
     if (monaco) monaco.editor.setTheme(theme === 'light' ? 'arpy-light' : 'arpy');
   }
@@ -466,7 +481,7 @@
 
   A.editor = {
     initMonaco, open, close, closeAll, save, saveAll, applyContent, syncFromDisk, renamed,
-    liveContext, setMarkers, showDiff, setFontSize, setTheme, breakpoints, toggleBreakpoint,
+    liveContext, setMarkers, showDiff, setFontSize, setTheme, setLite, breakpoints, toggleBreakpoint,
     setAiComplete: (on) => { aiCompleteOn = !!on; },
     get active() { return active; },
     isOpen: (p) => tabs.has(p),

@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell, Menu } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const settings = require('./settings');
 const project = require('./project');
 const arduino = require('./arduino');
@@ -14,6 +15,20 @@ let win = null;
 let root = null; // carpeta del proyecto abierto
 let watcher = null;
 
+// Equipos modestos (≤ 8 GB de RAM o ≤ 4 núcleos): la interfaz usa el "modo ligero" por defecto.
+const LOW_END = os.totalmem() <= 8.6 * 1024 ** 3 || os.cpus().length <= 4;
+const PERF_MODE = (() => { try { return settings.load().perfMode || 'auto'; } catch { return 'auto'; } })();
+const LITE = PERF_MODE === 'lite' || (PERF_MODE !== 'full' && LOW_END);
+// En modo ligero se dibuja sin GPU: el proceso de GPU pasa de ~350 MB a ~90 MB de RAM.
+// (En laptops con gráficos integrados esa memoria sale de la RAM del sistema.)
+if (LITE) {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch('disable-gpu');
+  app.commandLine.appendSwitch('disable-software-rasterizer'); // no se usa WebGL: no cargar SwiftShader
+}
+// Menos procesos en segundo plano de Chromium = menos RAM.
+app.commandLine.appendSwitch('disable-features', 'SpareRendererForSitePerProcess,MediaRouter,DialMediaRouteProvider,HardwareMediaKeyHandling');
+
 function send(channel, payload) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, payload);
 }
@@ -26,7 +41,8 @@ function createWindow() {
     height: 920,
     minWidth: 1000,
     minHeight: 640,
-    backgroundColor: '#0d1117',
+    backgroundColor: '#0b0f14',
+    show: false,
     title: 'ARPY Copiler',
     icon: path.join(__dirname, '..', 'renderer', 'icon.png'),
     webPreferences: {
@@ -34,8 +50,11 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      spellcheck: false,
+      backgroundThrottling: true,
     },
   });
+  win.once('ready-to-show', () => win.show());
   Menu.setApplicationMenu(null);
   win.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -76,8 +95,9 @@ function need() {
 const h = (name, fn) => ipcMain.handle(name, (_e, ...args) => fn(...args));
 
 // ---- App / configuración ----
-h('settings:get', () => ({ ...settings.load(), builtinKey: settings.hasBuiltinKey() }));
-h('settings:set', (patch) => settings.save(patch));
+const withEnv = (s) => ({ ...s, builtinKey: settings.hasBuiltinKey(), lowEnd: LOW_END, ramGB: Math.round(os.totalmem() / 1024 ** 3), cores: os.cpus().length });
+h('settings:get', () => withEnv(settings.load()));
+h('settings:set', (patch) => withEnv(settings.save(patch)));
 h('status', () => ({ arduino: arduino.status(), python: python.status(root, root ? project.readConfig(root) : null), git: tools.gitAvailable() }));
 h('open-external', (url) => shell.openExternal(url));
 

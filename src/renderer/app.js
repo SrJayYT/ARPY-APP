@@ -427,6 +427,7 @@
   function applyTheme(theme) {
     document.documentElement.dataset.theme = theme;
     A.editor.setTheme(theme);
+    try { localStorage.setItem('arpy.theme', theme); } catch {}
     const b = A.$('#btnTheme');
     b.innerHTML = A.icon(theme === 'light' ? 'moon' : 'sun');
   }
@@ -493,6 +494,13 @@
     auto.checked = !!settings.autoApply;
     const inline = A.el('input', { type: 'checkbox' });
     inline.checked = !!settings.aiComplete;
+    const perf = A.el('select', {},
+      A.el('option', { value: 'auto' }, `Automático (este equipo: ${settings.ramGB} GB RAM, ${settings.cores} núcleos → ${settings.lowEnd ? 'ligero' : 'completo'})`),
+      A.el('option', { value: 'lite' }, 'Ligero: menos animaciones y sin minimapa (equipos con 8 GB o menos)'),
+      A.el('option', { value: 'full' }, 'Completo: todos los efectos'));
+    perf.value = settings.perfMode || 'auto';
+    const introChk = A.el('input', { type: 'checkbox' });
+    introChk.checked = settings.intro !== false;
 
     const field = (label, input, hint) => A.el('div', { class: 'field' }, A.el('label', {}, label), input, hint ? A.el('small', {}, hint) : null);
     const showKey = A.el('button', { class: 'btn sm ghost', onclick: () => { key.type = key.type === 'password' ? 'text' : 'password'; } }, 'Ver');
@@ -505,6 +513,8 @@
         A.el('small', {}, env.arduino.installed ? `✔ ${env.arduino.version}` : '⚠ No instalado. Pulsa "Instalar": se descarga la versión oficial automáticamente.')),
       field('Intérprete de Python', py, env.python.installed ? `✔ Detectado: ${env.python.cmd} — ${env.python.version}` : '⚠ No se encontró Python 3'),
       field('Tamaño de letra del editor', font),
+      field('Rendimiento', perf, 'El modo ligero dibuja sin GPU, quita el minimapa y reduce animaciones: usa casi la mitad de RAM. Ideal para laptops con 8 GB. Reinicia la app para aplicarlo del todo.'),
+      A.el('label', { class: 'chk' }, introChk, 'Mostrar la animación de apertura'),
       A.el('label', { class: 'chk' }, auto, 'Aplicar automáticamente los cambios de la IA (sin pulsar "Aplicar")'),
       A.el('label', { class: 'chk' }, inline, 'Autocompletado con IA mientras escribes (texto gris, Tab para aceptar). Usa cuota de Gemini.'),
       A.el('div', { class: 'modal-foot' }, A.el('button', {
@@ -513,6 +523,7 @@
           settings = await A.api('settings:set', {
             geminiApiKey: key.value.trim(), model: model.value, pythonPath: py.value.trim(),
             arduinoCliPath: cli.value.trim(), fontSize: +font.value || 14, autoApply: auto.checked, aiComplete: inline.checked,
+            perfMode: perf.value, intro: introChk.checked,
           });
           applySettings();
           env = await A.api('status');
@@ -525,12 +536,25 @@
     A.modal.open('Configuración', body);
   }
 
+  function isLite() {
+    return settings.perfMode === 'lite' || (settings.perfMode !== 'full' && !!settings.lowEnd);
+  }
+  function applyPerf() {
+    const lite = isLite();
+    if (lite) document.documentElement.dataset.perf = 'lite';
+    else delete document.documentElement.dataset.perf;
+    A.editor.setLite(lite);
+    try { localStorage.setItem('arpy.perf', lite ? 'lite' : 'full'); } catch {}
+    try { localStorage.setItem('arpy.intro', settings.intro === false ? '0' : '1'); } catch {}
+  }
+
   async function applySettings() {
     A.editor.setFontSize(settings.fontSize || 14);
     A.$('#autoApply').checked = !!settings.autoApply;
     A.$('#agentMode').checked = !!settings.agentMode;
     A.editor.setAiComplete(!!settings.aiComplete);
     applyTheme(settings.theme || 'dark');
+    applyPerf();
     const sel = A.$('#modelSelect');
     let models = [];
     try { models = await A.api('ai:models'); } catch {}
@@ -633,7 +657,7 @@
     A.$('#btnDebugPy').addEventListener('click', () => runPython(null, { debug: true }));
     A.$('#btnBuildExe').addEventListener('click', buildExe);
     A.$('#btnRemotePy').addEventListener('click', runRemote);
-    setInterval(refreshGitDot, 10000);
+    setInterval(() => { if (!document.hidden) refreshGitDot(); }, 30000);
     A.$('#btnSettings').addEventListener('click', openSettings);
     A.$('#btnNewFile').addEventListener('click', () => A.explorer.newFile());
     A.$('#btnNewFolder').addEventListener('click', () => A.explorer.newFolder());
@@ -720,10 +744,12 @@
 
     // cambios externos en disco (incluye ediciones de la IA)
     const onFs = A.debounce(() => { A.explorer.refresh(); A.editor.syncFromDisk(); }, 200);
+    const gitLater = A.debounce(() => refreshGitDot(), 1500);
+    window.arpy.on('fs:changed', gitLater);
     window.arpy.on('fs:changed', onFs);
     let lastPorts = null;
     setInterval(async () => {
-      if (!A.app.config) return;
+      if (!A.app.config || document.hidden) return;
       let ports = [];
       try { ports = await A.api('serial:list'); } catch { return; }
       const sig = ports.map((p) => p.address).sort().join('|');
