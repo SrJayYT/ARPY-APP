@@ -56,17 +56,18 @@ flowchart LR
 
 1. [Features](#features)
 2. [Technologies](#technologies)
-3. [Screenshots](#screenshots)
-4. [Getting started](#getting-started)
-5. [How the AI works](#how-the-ai-works)
-6. [`.arpy` projects](#arpy-projects)
-7. [Examples](#examples)
-8. [System requirements & performance](#system-requirements--performance)
-9. [Keyboard shortcuts](#keyboard-shortcuts)
-10. [Architecture](#architecture)
-11. [Development](#development)
-12. [FAQ](#faq)
-13. [License](#license)
+3. [Themes](#themes)
+4. [Screenshots](#screenshots)
+5. [Getting started](#getting-started)
+6. [How the AI works](#how-the-ai-works)
+7. [`.arpy` projects](#arpy-projects)
+8. [Examples](#examples)
+9. [System requirements & performance](#system-requirements--performance)
+10. [Keyboard shortcuts](#keyboard-shortcuts)
+11. [Architecture](#architecture)
+12. [Development](#development)
+13. [FAQ](#faq)
+14. [License](#license)
 
 ## Features
 
@@ -130,6 +131,20 @@ Choose the technologies when you create a project. You can mix them (for example
 | **Java** (`.java`) | `java/` | `java File.java` | JDK 21 (one-click install, ~200 MB) or your own |
 | **SQL** (`.sql`) | `sql/` | Runs against `sql/database.sqlite`, results as tables | Nothing: SQLite built in |
 
+<img src="docs/new-project.jpg" alt="New project form with the technology picker: Arduino, Python, JavaScript, Web, EJS, PHP, Java and SQL" width="820" />
+
+| Web preview (reloads on save) | SQL results as tables |
+|---|---|
+| <img src="docs/web-preview.jpg" alt="Web page shown live in the Preview panel under its HTML code" /> | <img src="docs/sql-console.jpg" alt="SQL file run against SQLite with the result shown as a table in the Console" /> |
+
+## Themes
+
+10 themes, each with a **dark** and a **light** version. Pick one for the app and, if you like, a different one for the code editor and terminal (**Settings → Appearance**). Changes apply instantly, and **Match Windows** follows your system's dark/light mode. Every theme is checked for readable contrast.
+
+<img src="docs/themes.jpg" alt="Six of the themes: Lavender dark, Sakura light, Forest dark, Glacier light, Sunset dark and Coffee light" width="920" />
+
+<img src="docs/theme-settings.jpg" alt="Appearance settings: dark, light or match Windows, app theme and editor theme pickers" width="760" />
+
 ## Screenshots
 
 | Live AI edits | Wiring editor |
@@ -137,6 +152,10 @@ Choose the technologies when you create a project. You can mix them (for example
 | <img src="docs/live-edit.jpg" alt="AI editing a file live with removed lines in red and added lines in green" /> | <img src="docs/wiring.jpg" alt="Visual wiring editor with LEDs and a button connected to an Arduino Uno" /> |
 | **Simulator with components** | **Examples gallery** |
 | <img src="docs/simulator.jpg" alt="Simulator running a traffic light with LEDs and a push button" /> | <img src="docs/examples.jpg" alt="Gallery of ready-made examples, some with desktop apps" /> |
+
+**Choose your AI** — Gemini, Claude, OpenAI, DeepSeek, Mistral, Groq or OpenRouter. Each key shows whether it's verified, invalid, expired, suspended or out of credit:
+
+<img src="docs/ai-providers.jpg" alt="AI provider settings with a key field, status badge and Check button for each provider" width="760" />
 
 ## Getting started
 
@@ -181,8 +200,6 @@ sequenceDiagram
 - It replies in the language you write in.
 
 ## `.arpy` projects
-
-<img src="docs/new-project.jpg" alt="New project form: name, location, Arduino on/off, board and template" width="760" />
 
 Every project is a folder with a **`<name>.arpy`** file. Open it in any of these ways:
 - by double-clicking the file;
@@ -328,17 +345,18 @@ It's built with Electron, but only Windows is tested and packaged right now.
 
 1. [Funciones](#funciones)
 2. [Tecnologías](#tecnologías)
-3. [Capturas](#capturas)
-4. [Primeros pasos](#primeros-pasos)
-5. [Cómo trabaja la IA](#cómo-trabaja-la-ia)
-6. [Proyectos `.arpy`](#proyectos-arpy)
-7. [Ejemplos](#ejemplos)
-8. [Requisitos y rendimiento](#requisitos-y-rendimiento)
-9. [Atajos de teclado](#atajos-de-teclado)
-10. [Arquitectura](#arquitectura)
-11. [Desarrollo](#desarrollo)
-12. [Preguntas frecuentes](#preguntas-frecuentes)
-13. [Licencia](#licencia)
+3. [Temas](#temas)
+4. [Capturas](#capturas)
+5. [Primeros pasos](#primeros-pasos)
+6. [Cómo trabaja la IA](#cómo-trabaja-la-ia)
+7. [Proyectos `.arpy`](#proyectos-arpy)
+8. [Ejemplos](#ejemplos)
+9. [Requisitos y rendimiento](#requisitos-y-rendimiento)
+10. [Atajos de teclado](#atajos-de-teclado)
+11. [Arquitectura](#arquitectura)
+12. [Desarrollo](#desarrollo)
+13. [Preguntas frecuentes](#preguntas-frecuentes)
+14. [Licencia](#licencia)
 
 ## Funciones
 
@@ -402,6 +420,20 @@ Al crear un proyecto eliges sus tecnologías. Se pueden combinar (por ejemplo Ar
 | **Java** (`.java`) | `java/` | `java Archivo.java` | JDK 21 (un clic, ~200 MB) o el tuyo |
 | **SQL** (`.sql`) | `sql/` | Contra `sql/database.sqlite`, resultados en tablas | Nada: SQLite incluido |
 
+<img src="docs/new-project.jpg" alt="Formulario de nuevo proyecto con el selector de tecnologías: Arduino, Python, JavaScript, Web, EJS, PHP, Java y SQL" width="820" />
+
+| Vista previa web (se recarga al guardar) | Resultados de SQL en tablas |
+|---|---|
+| <img src="docs/web-preview.jpg" alt="Página web mostrada en vivo en el panel Vista previa, debajo de su código HTML" /> | <img src="docs/sql-console.jpg" alt="Archivo SQL ejecutado contra SQLite con el resultado en forma de tabla en la Consola" /> |
+
+## Temas
+
+10 temas, cada uno con versión **oscura** y **clara**. Elige uno para la app y, si quieres, otro distinto para el editor de código y la terminal (**Configuración → Apariencia**). Los cambios se aplican al instante, y **Como Windows** sigue el modo oscuro/claro del sistema. Todos los temas están comprobados para que el texto se lea bien.
+
+<img src="docs/themes.jpg" alt="Seis de los temas: Lavanda oscuro, Sakura claro, Bosque oscuro, Glaciar claro, Atardecer oscuro y Café claro" width="920" />
+
+<img src="docs/theme-settings.jpg" alt="Ajustes de apariencia: oscuro, claro o como Windows, y selectores del tema de la app y del editor" width="760" />
+
 ## Capturas
 
 | La IA editando en vivo | Editor de conexiones |
@@ -409,6 +441,10 @@ Al crear un proyecto eliges sus tecnologías. Se pueden combinar (por ejemplo Ar
 | <img src="docs/live-edit.jpg" alt="La IA editando un archivo en vivo: en rojo lo que quita, en verde lo que pone" /> | <img src="docs/wiring.jpg" alt="Editor visual de conexiones con LEDs y un pulsador conectados a un Arduino Uno" /> |
 | **Simulador con componentes** | **Galería de ejemplos** |
 | <img src="docs/simulator.jpg" alt="Simulador ejecutando un semáforo con LEDs y un pulsador" /> | <img src="docs/examples.jpg" alt="Galería de ejemplos listos, algunos con app de escritorio" /> |
+
+**Elige tu IA** — Gemini, Claude, OpenAI, DeepSeek, Mistral, Groq u OpenRouter. Cada key muestra si está verificada, es inválida, expiró, fue suspendida o se quedó sin saldo:
+
+<img src="docs/ai-providers.jpg" alt="Ajustes de proveedores de IA con campo de key, estado y botón Comprobar para cada uno" width="760" />
 
 ## Primeros pasos
 
