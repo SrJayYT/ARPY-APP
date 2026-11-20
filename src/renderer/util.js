@@ -40,6 +40,7 @@ const ICONS = {
   search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
   image: '<rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>',
   plus: '<path d="M5 12h14M12 5v14"/>',
+  eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
   help: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
   wifiOff: '<path d="M12 20h.01"/><path d="M8.5 16.43a5 5 0 0 1 7 0"/><path d="M2 8.82a15 15 0 0 1 4.17-2.65"/><path d="M10.66 5c4.01-.36 8.14.9 11.34 3.76"/><path d="M16.85 11.25a10 10 0 0 1 2.22 1.68"/><path d="M5 13a10 10 0 0 1 5.24-2.76"/><path d="m2 2 20 20"/>',
   cable: '<path d="M4 9a2 2 0 0 1-2-2V5h6v2a2 2 0 0 1-2 2Z"/><path d="M3 5V3"/><path d="M7 5V3"/><path d="M19 15V6.5a3.5 3.5 0 0 0-7 0v11a3.5 3.5 0 0 1-7 0V9"/><path d="M17 21v-2"/><path d="M21 21v-2"/><path d="M22 19h-6v-2a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2Z"/>',
@@ -162,12 +163,13 @@ document.addEventListener('mousedown', (e) => { if (!e.target.closest('#ctxMenu'
 A.fileIcon = (name, dir) => {
   if (dir) return '<span class="fi dir">' + A.icon('folder') + '</span>';
   const ext = name.split('.').pop().toLowerCase();
-  const map = { ino: ['ino', '∞'], cpp: ['ino', 'C+'], c: ['ino', 'C'], h: ['h', 'H'], hpp: ['h', 'H'], py: ['py', 'PY'], json: ['json', '{}'], md: ['md', 'M↓'], txt: ['txt', '≡'], arpy: ['ino', 'AP'] };
+  const map = { ino: ['ino', '∞'], cpp: ['ino', 'C+'], c: ['ino', 'C'], h: ['h', 'H'], hpp: ['h', 'H'], py: ['py', 'PY'], json: ['json', '{}'], md: ['md', 'M↓'], txt: ['txt', '≡'], arpy: ['ino', 'AP'],
+    js: ['js', 'JS'], mjs: ['js', 'JS'], cjs: ['js', 'JS'], html: ['web', '<>'], htm: ['web', '<>'], css: ['css', '#'], ejs: ['ejs', '<%'], php: ['php', 'php'], java: ['java', 'J'], sql: ['sql', 'SQL'], sqlite: ['sql', 'DB'] };
   const [cls, label] = map[ext] || ['txt', '•'];
   return `<span class="fi ${cls}">${label}</span>`;
 };
 
 A.langOf = (path) => {
   const ext = path.split('.').pop().toLowerCase();
-  return { ino: 'cpp', cpp: 'cpp', c: 'cpp', h: 'cpp', hpp: 'cpp', py: 'python', json: 'json', arpy: 'json', md: 'markdown', js: 'javascript', html: 'html', css: 'css', xml: 'xml', yaml: 'yaml', yml: 'yaml', ini: 'ini', toml: 'ini' }[ext] || 'plaintext';
+  return { ino: 'cpp', cpp: 'cpp', c: 'cpp', h: 'cpp', hpp: 'cpp', py: 'python', json: 'json', arpy: 'json', mjs: 'javascript', cjs: 'javascript', htm: 'html', ejs: 'html', php: 'php', java: 'java', sql: 'sql', ts: 'typescript', md: 'markdown', js: 'javascript', html: 'html', css: 'css', xml: 'xml', yaml: 'yaml', yml: 'yaml', ini: 'ini', toml: 'ini' }[ext] || 'plaintext';
 };

@@ -2,6 +2,10 @@ const settings = require('./settings');
 const project = require('./project');
 const { findBoard } = require('../shared/boards');
 const parts = require('../shared/parts');
+const TECHS = require('../shared/techs');
+const providers = require('./providers');
+const claude = require('./claude');
+const BAD_KEY = new Set(['invalid', 'expired', 'suspended', 'no-credit']);
 
 const API = 'https://generativelanguage.googleapis.com/v1beta';
 const MAX_HISTORY = 80; // mensajes previos que se envían en cada petición
@@ -19,6 +23,7 @@ function systemPrompt(root, live) {
   const files = project.snapshot(root);
   const memory = project.loadMemory(root).trim();
   const sketch = cfg.sketch || 'sketch';
+  const techList = TECHS.techsOf(cfg).map((id) => TECHS.find(id));
   const wiring = project.loadWiring(root);
   const wiringText = parts.describe(wiring);
   const wiringWarn = wiring ? parts.check(wiring) : [];
@@ -86,8 +91,11 @@ contenido completo del archivo
 
 ## Estado actual del IDE
 - Proyecto: ${cfg.name || ''}
-${cfg.arduino === false ? '- ESTE PROYECTO ES SOLO DE PYTHON (Arduino desactivado): no escribas sketches de Arduino, no hables de la placa ni del puerto serie salvo que el usuario lo pida; si lo pide, sugiérele activar Arduino en Configuración → Proyecto.\n' : ''}- Placa: ${board.name} (FQBN ${board.fqbn}) — capacidades: ${board.features.join(', ') || 'n/d'}
-- Puerto: ${cfg.port || 'sin seleccionar'} | Baudios configurados: ${cfg.baud || 9600}
+- Tecnologías activas: ${techList.map((t) => t.name).join(', ')}. Escribe código SOLO en estas tecnologías salvo que el usuario pida otra (si la pide, sugiérele activarla en Configuración → Tecnologías del proyecto).
+- Dónde va cada cosa: ${techList.map((t) => `${t.name} → carpeta ${t.folder}/`).join(' · ')}
+- Cómo se ejecuta (botón Ejecutar / F5, salida en la Consola): .py con Python (.venv del proyecto); .js con Node.js integrado (sin npm install, solo módulos nativos de Node salvo que el usuario los instale); .java con "java Archivo.java" (una clase pública con main por archivo); .php con PHP; .sql contra la base SQLite sql/database.sqlite (los SELECT se muestran como tablas). HTML, EJS y PHP se ven en el panel Vista previa (se recarga solo al guardar). Las plantillas EJS toman sus datos de un .json con el mismo nombre (views/index.ejs ← views/index.json).
+${techList.some((t) => t.id === 'arduino') ? `- Placa: ${board.name} (FQBN ${board.fqbn}) — capacidades: ${board.features.join(', ') || 'n/d'}
+- Puerto: ${cfg.port || 'sin seleccionar'} | Baudios configurados: ${cfg.baud || 9600}` : '- Este proyecto NO usa Arduino: no escribas sketches ni hables de la placa salvo que el usuario lo pida.'}
 - Archivo activo: ${live.activeFile || 'ninguno'}${live.cursorLine ? ` (cursor en línea ${live.cursorLine})` : ''}
 - Pestañas abiertas: ${(live.openFiles || []).join(', ') || 'ninguna'}
 ${live.selection ? `- Texto seleccionado por el usuario en ${live.activeFile}:\n\`\`\`\n${tail(live.selection, 6000)}\n\`\`\`` : ''}
@@ -198,8 +206,52 @@ function usage() {
   return s.usage && s.usage.day === today() ? s.usage : { day: today(), requests: 0, tokens: 0, fallbacks: 0 };
 }
 
+// Key del proveedor activo (Gemini puede usar la integrada).
+function keyFor(pid) {
+  if (pid === 'gemini') return settings.apiKey();
+  return ((settings.load().aiKeys || {})[pid] || '').trim();
+}
+
+function rememberKeyStatus(pid, status, message) {
+  const s = settings.load();
+  settings.save({ aiKeyStatus: { ...(s.aiKeyStatus || {}), [pid]: { status, message: message || '', checked: Date.now() } } });
+}
+
+// Chat con Anthropic, OpenAI, DeepSeek, Mistral, Groq u OpenRouter (Gemini usa el camino de abajo).
+async function chatOther(pid, { root, history, live, model }, onChunk, onStatus) {
+  const p = providers.find(pid);
+  const key = keyFor(pid);
+  if (!key) throw new Error(`Falta la API key de ${p.name}. Agrégala en Configuración → Inteligencia artificial.`);
+  const s = settings.load();
+  const useModel = model || (s.aiModels || {})[pid] || p.defaultModel || '';
+  if (!useModel) throw new Error(`Elige un modelo de ${p.name} en el selector de arriba del chat.`);
+  stop();
+  const main = new AbortController();
+  controller = main;
+  onStatus('');
+  const system = systemPrompt(root, live || {});
+  const messages = toContents(root, history).map((c) => ({ role: c.role === 'model' ? 'assistant' : 'user', parts: c.parts }));
+  let r;
+  try {
+    r = p.kind === 'anthropic'
+      ? await claude.chat(key, useModel, system, messages, onChunk, main.signal)
+      : await providers.chatOpenAI(p, key, useModel, system, messages, onChunk, main.signal);
+  } catch (e) {
+    if (e.keyStatus) {
+      rememberKeyStatus(pid, e.keyStatus, e.message);
+      e.message += ` — Revisa la key de ${p.name} en Configuración.`;
+    }
+    throw e;
+  } finally {
+    if (controller === main) controller = null;
+  }
+  const day = recordUsage(r.model, r.usage, false);
+  return { text: r.text, model: r.model, requested: useModel, usage: r.usage, day, provider: pid };
+}
+
 async function chat({ root, history, live, model }, onChunk, onStatus = () => {}) {
   const s = settings.load();
+  if ((s.aiProvider || 'gemini') !== 'gemini') return chatOther(s.aiProvider, { root, history, live, model }, onChunk, onStatus);
   const key = settings.apiKey();
   if (!key) throw new Error('No hay API key de Gemini disponible. Agrega una en Configuración (⚙).');
   stop();
@@ -319,16 +371,37 @@ ${prefix.slice(-3000)}<CURSOR>${suffix.slice(0, 1000)}`;
   }
 }
 
+// Modelos del proveedor activo (para el selector del chat).
 async function listModels() {
-  const key = settings.apiKey();
+  const pid = settings.load().aiProvider || 'gemini';
+  const key = keyFor(pid);
   if (!key) return [];
-  const res = await fetch(`${API}/models?pageSize=200`, { headers: { 'x-goog-api-key': key } });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return (data.models || [])
-    .filter((m) => (m.supportedGenerationMethods || []).includes('generateContent'))
-    .map((m) => m.name.replace(/^models\//, ''))
-    .filter((n) => /^gemini/.test(n) && !/(tts|image|embedding|transcribe|computer-use|robotics|live|audio)/.test(n));
+  try { return await providers.listModels(pid, key); } catch { return []; }
 }
 
-module.exports = { chat, stop, listModels, complete, usage };
+// Verifica las keys configuradas (al abrir la app): detecta keys inválidas, expiradas, suspendidas o sin saldo.
+async function verifyKeys() {
+  const s = settings.load();
+  const out = {};
+  await Promise.all(providers.PROVIDERS.map(async (p) => {
+    const key = keyFor(p.id);
+    if (!key) return;
+    const r = await providers.verify(p.id, key);
+    out[p.id] = { ...r, builtin: p.id === 'gemini' && !s.geminiApiKey };
+  }));
+  const prev = settings.load().aiKeyStatus || {};
+  const keep = {};
+  for (const [k, v] of Object.entries(out)) keep[k] = { status: v.status, message: v.message || '', checked: v.checked || Date.now() };
+  settings.save({ aiKeyStatus: { ...prev, ...keep } });
+  return out;
+}
+
+async function verifyKey(pid, key) {
+  const r = await providers.verify(pid, (key || keyFor(pid) || '').trim());
+  if (r.status !== 'missing') rememberKeyStatus(pid, r.status, r.message);
+  return r;
+}
+
+const providerList = () => providers.PROVIDERS.map(({ id, name, keyUrl, keyHint, vision, defaultModel }) => ({ id, name, keyUrl, keyHint, vision, defaultModel }));
+
+module.exports = { chat, stop, listModels, complete, usage, verifyKeys, verifyKey, providerList, BAD_KEY };

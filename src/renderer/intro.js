@@ -5,6 +5,7 @@
   const root = document.documentElement;
   const theme = get('arpy.theme');
   if (theme) root.dataset.theme = theme;
+  try { const vars = JSON.parse(get('arpy.vars') || '{}'); for (const k in vars) root.style.setProperty(k, vars[k]); } catch {}
   // Modo ligero: lo decide la app (según RAM/CPU o Configuración) y lo recuerda para el próximo arranque.
   const perf = get('arpy.perf');
   const lite = perf ? perf === 'lite' : (navigator.hardwareConcurrency || 4) <= 4;

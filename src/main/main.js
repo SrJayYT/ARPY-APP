@@ -14,6 +14,10 @@ const drivers = require('./drivers');
 const updater = require('./updater');
 const share = require('./share');
 const examples = require('./examples');
+const runners = require('./runners');
+const runtimes = require('./runtimes');
+const preview = require('./preview');
+const TECHS = require('../shared/techs');
 const I18N_EN = require('../shared/i18n-en');
 const L = (s) => ((settings.load().lang || 'en') === 'en' && I18N_EN.exact[s]) || s;
 
@@ -99,6 +103,7 @@ function watch(dir) {
 
 function openProject(dir) {
   if (!project.isProject(dir)) project.adopt(dir);
+  preview.stopAll();
   root = dir;
   settings.addRecent(dir);
   watch(dir);
@@ -143,11 +148,13 @@ h('project:pick-folder', async (current) => {
   settings.save({ projectsFolder: r.filePaths[0] });
   return r.filePaths[0];
 });
-h('project:create', async ({ name, template, board, parent, arduino = true }) => {
+h('project:create', async ({ name, template, board, parent, arduino = true, tech }) => {
   const dir = parent || settings.load().projectsFolder || defaultFolder();
   fs.mkdirSync(dir, { recursive: true });
-  return openProject(project.create(dir, name, template, board, { arduino }));
+  return openProject(project.create(dir, name, template, board, { arduino, tech }));
 });
+// Activar / desactivar tecnologías del proyecto abierto
+h('project:techs', (tech) => project.setTechs(need(), tech));
 h('project:open-dialog', async () => {
   const r = await dialog.showOpenDialog(win, {
     title: L('Abrir proyecto ARPY'),
@@ -197,6 +204,8 @@ h('examples:create', async ({ id, name, parent }) => {
 h('project:launch-file', () => { const f = launchFile; launchFile = null; return f; });
 h('project:close', () => {
   root = null;
+  runners.stop();
+  preview.stopAll();
   if (watcher) watcher.close();
   watcher = null;
   win.setTitle('ARPY Copiler');
@@ -289,8 +298,25 @@ h('python:run', (opts = {}) => {
   const debug = opts.debug ? { breakpoints: (opts.debug.breakpoints || []).map((b) => ({ file: project.resolveIn(root, b.file), line: b.line })) } : null;
   return python.start(full, path.dirname(full), pyEnv(cfg), logTo('python'), exit, { root, cfg, debug });
 });
-h('python:stop', () => python.stop());
-h('python:stdin', (text) => python.write(text));
+h('python:stop', () => { python.stop(); runners.stop(); });
+h('python:stdin', (text) => { python.write(text); runners.write(text); });
+
+// ---- Ejecutar cualquier archivo: JavaScript, Java, PHP, SQL (Python usa python:run) ----
+h('run:file', (rel) => {
+  const r = need();
+  const kind = TECHS.runnerFor(rel);
+  if (!kind) throw new Error('Este tipo de archivo no se puede ejecutar');
+  if (kind === 'python' || kind === 'preview') return { kind };
+  const full = project.resolveIn(r, rel);
+  if (!fs.existsSync(full)) throw new Error(`No existe ${rel}`);
+  python.stop();
+  const cfg = project.readConfig(r) || {};
+  const res = runners.start(kind, full, r, pyEnv(cfg), logTo('python'), (code) => send('python:exit', code));
+  return { kind, ...res };
+});
+h('runtimes:status', () => runtimes.status());
+h('runtimes:install', (name) => runtimes.install(name, logTo('python')));
+h('preview:url', (rel) => preview.urlFor(need(), rel, logTo('python')));
 h('python:pip', (pkg) => python.pipInstall(need(), project.readConfig(root), pkg, logTo('python')));
 h('python:requirements', async () => {
   const req = project.resolveIn(need(), 'python/requirements.txt');
@@ -364,6 +390,9 @@ h('ai:image-save', (dataUrl) => project.saveImage(need(), dataUrl));
 h('ai:image-read', (name) => { const i = project.readImage(need(), name); return `data:${i.mime};base64,${i.data}`; });
 h('ai:memory', (text, r) => project.saveMemory(chatRoot(r), text));
 h('ai:models', () => ai.listModels());
+h('ai:providers', () => ai.providerList());
+h('ai:verify-all', () => ai.verifyKeys());
+h('ai:verify', (pid, key) => ai.verifyKey(pid, key));
 h('ai:usage', () => ai.usage());
 h('ai:complete', (args) => ai.complete(args));
 h('ai:stop', () => ai.stop());

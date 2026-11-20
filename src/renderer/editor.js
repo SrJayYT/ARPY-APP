@@ -282,8 +282,17 @@
     });
   }
 
-  function setTheme(theme) {
-    if (monaco) monaco.editor.setTheme(theme === 'light' ? 'arpy-light' : 'arpy');
+  // palette: paleta de src/shared/themes.js (tema del editor elegido en Configuración)
+  let lastPalette = null;
+  function setTheme(theme, palette) {
+    if (palette) lastPalette = palette;
+    if (!monaco) return;
+    if (lastPalette) {
+      monaco.editor.defineTheme('arpy-custom', window.ARPY_THEMES.monacoTheme(lastPalette));
+      monaco.editor.setTheme('arpy-custom');
+      return;
+    }
+    monaco.editor.setTheme(theme === 'light' ? 'arpy-light' : 'arpy');
   }
 
   function key(path) { return monaco.Uri.parse('arpy:///' + path); }

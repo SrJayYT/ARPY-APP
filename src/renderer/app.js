@@ -102,32 +102,121 @@
     statusbar();
   }
 
-  // Proyecto sin Arduino: se ocultan placa, puertos, subir, conexiones y simulador.
-  const arduinoOn = () => !A.app.config || A.app.config.arduino !== false;
-  function applyArduinoMode() {
-    const on = arduinoOn();
-    document.body.classList.toggle('no-arduino', !on);
-    const badge = A.$('#projPyBadge');
-    if (badge) badge.remove();
-    if (!on) A.$('#projName').after(A.el('span', { id: 'projPyBadge', class: 'py-badge', title: 'Proyecto solo de Python (Arduino desactivado)' }, 'PYTHON'));
-    if (!on && ['sim'].includes(A.panels.current)) A.panels.show('python');
+  // ---------- tecnologías del proyecto ----------
+  const TECH = window.ARPY_TECHS;
+  const techs = () => TECH.techsOf(A.app.config || {});
+  const hasTech = (id) => techs().includes(id);
+  const arduinoOn = () => !A.app.config || hasTech('arduino');
+
+  // Muestra solo las herramientas de las tecnologías activas.
+  function applyTechMode() {
+    const t = A.app.config ? techs() : ['arduino', 'python'];
+    document.body.classList.toggle('no-arduino', !t.includes('arduino'));
+    document.body.classList.toggle('no-python', !t.includes('python'));
+    document.body.classList.toggle('no-preview', !t.some((id) => TECH.find(id).preview));
+    A.$('#projTechs') && A.$('#projTechs').remove();
+    if (A.app.config) {
+      const shown = t.slice(0, 3).map((id) => A.el('i', { style: `--tc:${TECH.find(id).color}` }, TECH.find(id).short));
+      if (t.length > 3) shown.push(A.el('i', { class: 'more' }, `+${t.length - 3}`));
+      A.$('#projName').after(A.el('span', { id: 'projTechs', class: 'proj-techs', title: t.map((id) => TECH.find(id).name).join(' · ') }, ...shown));
+    }
+    if (!t.includes('arduino') && A.panels.current === 'sim') A.panels.show('python');
   }
 
-  async function setArduino(on) {
-    const patch = { arduino: on };
-    if (on && !A.app.config.board) patch.board = 'arduino:avr:uno';
-    A.app.config = await A.api('project:config', patch);
-    if (on && !(await A.api('fs:exists', (A.app.config.sketch || 'sketch') + '/sketch.ino'))) {
-      await A.api('fs:write', (A.app.config.sketch || 'sketch') + '/sketch.ino', 'void setup() {\n  Serial.begin(9600);\n}\n\nvoid loop() {\n}\n');
-      await A.explorer.refresh();
-    }
-    applyArduinoMode();
+  // Selector de tecnologías (proyecto nuevo y Configuración). Devuelve { el, get() }.
+  function techPicker(initial, onChange) {
+    const sel = new Set(initial);
+    const el = A.el('div', { class: 'tech-grid' });
+    const draw = () => {
+      el.innerHTML = '';
+      for (const t of TECH.TECHS) {
+        const on = sel.has(t.id);
+        el.append(A.el('button', { type: 'button', class: 'tech-chip' + (on ? ' on' : ''), style: `--tc:${t.color}`, title: t.desc, onclick: () => {
+          if (on && sel.size === 1) return A.toast('Elige al menos una tecnología', 'err');
+          on ? sel.delete(t.id) : sel.add(t.id);
+          draw();
+          onChange && onChange([...sel]);
+        } }, A.el('span', { class: 'tc-badge' }, t.short), A.el('span', {}, t.name, A.el('small', {}, t.desc))));
+      }
+    };
+    draw();
+    return { el, get: () => TECH.TECHS.map((t) => t.id).filter((id) => sel.has(id)) };
+  }
+
+  async function setTechs(list) {
+    const before = techs();
+    A.app.config = await A.api('project:techs', list);
+    await A.explorer.refresh();
+    applyTechMode();
     A.$('#boardSelect').value = A.app.config.board || '';
     boardCard();
-    if (on) refreshPorts(false);
+    if (hasTech('arduino') && !before.includes('arduino')) refreshPorts(false);
     statusbar();
-    A.toast(on ? 'Arduino activado en este proyecto' : 'Proyecto solo de Python', 'ok');
+    A.chat.renderCtx && A.chat.renderCtx();
+    A.toast('Tecnologías del proyecto actualizadas', 'ok');
   }
+
+  // ---------- ejecutar el archivo abierto (o el principal de cada tecnología) ----------
+  const MAINS = [['python', () => A.app.config.pythonMain || 'python/main.py'], ['javascript', () => 'js/main.js'], ['java', () => 'java/Main.java'],
+    ['sql', () => 'sql/consultas.sql'], ['web', () => 'web/index.html'], ['ejs', () => 'views/index.ejs'], ['php', () => 'php/index.php']];
+
+  async function askRuntime(name) {
+    const st = await A.api('runtimes:status');
+    const info = st[name] || {};
+    if (!(await A.confirm(`Falta ${info.label || name}`, `Para ejecutar este archivo hace falta ${info.label || name} (${info.size || ''}). ¿Lo descargo e instalo ahora? No pide permisos de administrador.`, 'Instalar'))) return false;
+    A.panels.startPython();
+    try { await A.api('runtimes:install', name); return true; } catch (e) { A.toast(e.message, 'err'); return false; }
+  }
+
+  async function runActive() {
+    if (!A.app.config) return;
+    let file = A.editor.liveContext().activeFile;
+    let kind = file && TECH.runnerFor(file);
+    if (!kind || (kind === 'preview' && !hasTech('web') && !hasTech('ejs') && !hasTech('php'))) {
+      const main = MAINS.find(([id, fn]) => hasTech(id) && A.app.files.includes(fn()));
+      file = main ? main[1]() : null;
+      kind = file && TECH.runnerFor(file);
+    }
+    if (!file || !kind) return A.toast('Abre un archivo que se pueda ejecutar (.py, .js, .java, .php, .sql o una página web)', 'err');
+    if (kind === 'python') return runPython(file);
+    if (kind === 'preview') return openPreview(file);
+    await A.editor.saveAll();
+    A.panels.startPython();
+    pyRunning = true;
+    A.$('#btnStopPy').disabled = false;
+    try {
+      const r = await A.api('run:file', file);
+      if (r.missing) {
+        pythonStopped();
+        if (await askRuntime(r.missing)) return runActive();
+      }
+    } catch (e) {
+      A.toast(e.message, 'err');
+      pythonStopped();
+    }
+  }
+
+  // ---------- vista previa web ----------
+  let previewState = null;
+  async function openPreview(rel) {
+    if (!A.app.config) return;
+    await A.editor.saveAll();
+    let r = await A.api('preview:url', rel || null).catch((e) => ({ error: e.message }));
+    if (r.missing && (await askRuntime(r.missing))) r = await A.api('preview:url', rel || null);
+    if (r.missing) return;
+    if (r.error) return A.toast(r.error, 'err');
+    previewState = r;
+    A.$('#previewFrame').src = r.url;
+    A.$('#previewUrl').textContent = r.url;
+    A.$('#previewEmpty').classList.add('hidden');
+    const pages = A.app.files.filter((p) => /\.(html?|ejs|php)$/i.test(p));
+    const sel = A.$('#previewPage');
+    sel.innerHTML = '';
+    pages.forEach((p) => sel.append(A.el('option', { value: p }, p)));
+    sel.value = r.rel;
+    A.panels.show('preview');
+  }
+  const reloadPreview = A.debounce(() => { if (previewState) A.$('#previewFrame').src = previewState.url; }, 350);
 
   // "¿No aparece tu placa?" junto al selector de puertos.
   function renderPortHelp(show) {
@@ -140,7 +229,7 @@
     if (!res) return;
     A.app.config = res.config;
     A.app.root = res.root;
-    applyArduinoMode();
+    applyTechMode();
     A.$('#welcome').classList.add('hidden');
     A.$('#projName').textContent = res.config.name || res.root.split(/[\\/]/).pop();
     A.$('#boardSelect').value = res.config.board;
@@ -512,12 +601,71 @@
   }
 
   // ---------- tema ----------
-  function applyTheme(theme) {
-    document.documentElement.dataset.theme = theme;
-    A.editor.setTheme(theme);
-    try { localStorage.setItem('arpy.theme', theme); } catch {}
+  // ---------- apariencia: modo (oscuro/claro/sistema) + tema de la app + tema del editor ----------
+  const THM = window.ARPY_THEMES;
+  const sysDark = matchMedia('(prefers-color-scheme: dark)');
+  const modeNow = () => ((settings.theme || 'dark') === 'system' ? (sysDark.matches ? 'dark' : 'light') : settings.theme || 'dark');
+  function applyTheme(mode) {
+    if (mode) settings.theme = mode;
+    const m = modeNow();
+    const appP = THM.palette(settings.appTheme || 'arpy', m);
+    const edId = settings.editorTheme && settings.editorTheme !== 'same' ? settings.editorTheme : settings.appTheme || 'arpy';
+    const edP = THM.palette(edId, m);
+    const root = document.documentElement;
+    root.dataset.theme = m;
+    const vars = { ...THM.cssVars(appP), ...THM.editorVars(edP) };
+    for (const [k, v] of Object.entries(vars)) root.style.setProperty(k, v);
+    A.editor.setTheme(m, edP);
+    try { localStorage.setItem('arpy.theme', m); localStorage.setItem('arpy.vars', JSON.stringify(vars)); } catch {}
     const b = A.$('#btnTheme');
-    b.innerHTML = A.icon(theme === 'light' ? 'moon' : 'sun');
+    b.innerHTML = A.icon(m === 'light' ? 'moon' : 'sun');
+  }
+  sysDark.addEventListener('change', () => { if (settings.theme === 'system') applyTheme(); });
+
+  // Tarjetas de temas con una miniatura de cómo se ven.
+  function themeGrid(current, onPick, withSame) {
+    const box = A.el('div', { class: 'theme-grid' });
+    const draw = (sel) => {
+      box.innerHTML = '';
+      if (withSame) {
+        box.append(A.el('button', { type: 'button', class: 'theme-card same' + (sel === 'same' ? ' on' : ''), onclick: () => { draw('same'); onPick('same'); } },
+          A.el('span', { class: 'tp' }, 'Aa'), A.el('b', {}, 'Igual que la app')));
+      }
+      for (const t of THM.THEMES) {
+        const p = THM.palette(t.id, modeNow());
+        const tp = A.el('span', { class: 'tp', style: `background:${p.editor.bg}` },
+          A.el('span', { class: 'side', style: `background:${p.bg2}` }),
+          A.el('span', { class: 'ln', style: `top:12px;width:30%;background:${p.syntax.keyword}` }),
+          A.el('span', { class: 'ln', style: `top:22px;left:44%;width:38%;background:${p.syntax.string}` }),
+          A.el('span', { class: 'ln', style: `top:32px;width:22%;background:${p.syntax.func}` }),
+          A.el('span', { class: 'ln', style: `top:42px;left:44%;width:26%;background:${p.syntax.comment}` }),
+          A.el('span', { class: 'dot', style: `background:${p.accent};box-shadow:0 0 0 3px ${p.bg2}` }));
+        box.append(A.el('button', { type: 'button', class: 'theme-card' + (sel === t.id ? ' on' : ''), title: t.name, onclick: () => { draw(t.id); onPick(t.id); } }, tp, A.el('b', {}, t.name)));
+      }
+    };
+    draw(current);
+    return box;
+  }
+
+  function appearanceSection() {
+    const save = (patch) => { Object.assign(settings, patch); applyTheme(); A.api('settings:set', patch).catch(() => {}); };
+    const mode = A.el('div', { class: 'theme-mode' });
+    const grids = A.el('div', { style: 'display:flex;flex-direction:column;gap:14px' });
+    const drawGrids = () => {
+      grids.innerHTML = '';
+      grids.append(
+        A.el('div', { class: 'field' }, A.el('label', {}, 'Tema de la app'), themeGrid(settings.appTheme || 'arpy', (id) => save({ appTheme: id }))),
+        A.el('div', { class: 'field' }, A.el('label', {}, 'Tema del editor y la terminal'), themeGrid(settings.editorTheme || 'same', (id) => save({ editorTheme: id }), true)));
+    };
+    const drawMode = () => {
+      mode.innerHTML = '';
+      for (const [k, label] of [['dark', 'Oscuro'], ['light', 'Claro'], ['system', 'Como Windows']]) {
+        mode.append(A.el('button', { type: 'button', class: (settings.theme || 'dark') === k ? 'on' : '', onclick: () => { save({ theme: k }); drawMode(); drawGrids(); } }, label));
+      }
+    };
+    drawMode();
+    drawGrids();
+    return A.el('div', { class: 'field appearance' }, A.el('label', {}, 'Apariencia'), mode, A.el('small', {}, 'Cada tema tiene versión oscura y clara. Los cambios se ven al instante.'), grids);
   }
 
   // ---------- abrir archivo rápido (Ctrl+P) ----------
@@ -558,11 +706,105 @@
   function pythonStopped() { pyRunning = false; A.$('#btnStopPy').disabled = true; }
 
   async function runAll() {
-    if (A.app.config && A.app.config.arduino === false) return runPython();
+    if (A.app.config && !hasTech('arduino')) return runActive();
     if (await upload()) {
       A.panels.line('build', '⏳ Esperando a que la placa reinicie…', 'info');
       setTimeout(() => runPython(), 1800);
     }
+  }
+
+  // ---------- proveedores de IA (Gemini, Claude, OpenAI, DeepSeek…) ----------
+  const KEY_LABEL = { ok: 'Verificada', invalid: 'Key inválida', expired: 'Expirada', suspended: 'Suspendida', 'no-credit': 'Sin saldo',
+    'rate-limited': 'Válida (límite alcanzado)', offline: 'Sin conexión', error: 'No se pudo verificar', missing: 'Sin key', checking: 'Verificando…' };
+  const KEY_BAD = new Set(['invalid', 'expired', 'suspended', 'no-credit']);
+  let providerList = null;
+  async function getProviders() { if (!providerList) providerList = await A.api('ai:providers'); return providerList; }
+
+  function keyPill(st) {
+    const cls = !st ? 'none' : st === 'ok' || st === 'rate-limited' ? 'ok' : KEY_BAD.has(st) ? 'bad' : st === 'checking' ? 'wait' : 'none';
+    return A.el('span', { class: 'key-pill ' + cls }, KEY_LABEL[st] || 'Sin key');
+  }
+
+  function aiSection() {
+    const list = A.el('div', { class: 'ai-providers' }, A.el('div', { class: 'muted' }, 'Cargando…'));
+    (async () => {
+      const provs = await getProviders();
+      list.innerHTML = '';
+      for (const p of provs) {
+        const isGemini = p.id === 'gemini';
+        const value = isGemini ? settings.geminiApiKey || '' : (settings.aiKeys || {})[p.id] || '';
+        let st = (settings.aiKeyStatus || {})[p.id];
+        st = st ? st.status : isGemini && settings.builtinKey ? null : value ? null : 'missing';
+        const pillBox = A.el('span', {}, keyPill(st));
+        const radio = A.el('input', { type: 'radio', name: 'aiProv', value: p.id });
+        radio.checked = (settings.aiProvider || 'gemini') === p.id;
+        radio.addEventListener('change', async () => {
+          settings = await A.api('settings:set', { aiProvider: p.id });
+          await refreshModels();
+          A.toast(`El chat ahora usa ${p.name}`, 'ok');
+        });
+        const input = A.el('input', { type: 'password', value, placeholder: isGemini && settings.builtinKey ? 'Usando la key integrada (déjalo vacío)' : p.keyHint || 'API key' });
+        const check = async () => {
+          const k = input.value.trim();
+          pillBox.innerHTML = '';
+          pillBox.append(keyPill('checking'));
+          const r = await A.api('ai:verify', p.id, k || null).catch(() => ({ status: 'error' }));
+          pillBox.innerHTML = '';
+          pillBox.append(keyPill(r.status));
+          pillBox.title = r.message || '';
+          settings = await A.api('settings:get');
+          if ((settings.aiProvider || 'gemini') === p.id) refreshModels();
+        };
+        input.addEventListener('change', async () => {
+          const k = input.value.trim();
+          settings = await A.api('settings:set', isGemini ? { geminiApiKey: k } : { aiKeys: { ...(settings.aiKeys || {}), [p.id]: k } });
+          if (k || isGemini) check(); else { pillBox.innerHTML = ''; pillBox.append(keyPill('missing')); }
+        });
+        const show = A.el('button', { type: 'button', class: 'btn sm ghost', onclick: () => { input.type = input.type === 'password' ? 'text' : 'password'; } }, 'Ver');
+        const verifyBtn = A.el('button', { type: 'button', class: 'btn sm ghost', onclick: check }, 'Comprobar');
+        const get = A.el('a', { class: 'key-link', onclick: () => A.api('open-external', p.keyUrl) }, 'Obtener key');
+        list.append(A.el('div', { class: 'ai-prov' + (radio.checked ? ' on' : '') },
+          A.el('label', { class: 'ap-head' }, radio, A.el('b', {}, p.name), p.vision ? null : A.el('small', { class: 'muted' }, 'sin imágenes'), A.el('span', { class: 'spacer' }), pillBox),
+          A.el('div', { class: 'row' }, input, show, verifyBtn), get));
+        radio.addEventListener('change', () => list.querySelectorAll('.ai-prov').forEach((r) => r.classList.toggle('on', r.contains(radio))));
+      }
+    })();
+    return A.el('div', { class: 'field' }, A.el('label', {}, 'Inteligencia artificial'), list,
+      A.el('small', {}, 'Elige qué IA usa el chat. Las keys se guardan solo en este equipo y se verifican cada vez que abres la app (para avisarte si expiraron, se suspendieron o no tienen saldo).'));
+  }
+
+  // Selector de modelos del chat según el proveedor activo.
+  async function refreshModels() {
+    const pid = settings.aiProvider || 'gemini';
+    const provs = await getProviders();
+    const p = provs.find((x) => x.id === pid) || provs[0];
+    const sel = A.$('#modelSelect');
+    let models = [];
+    try { models = await A.api('ai:models'); } catch {}
+    const current = pid === 'gemini' ? settings.model : (settings.aiModels || {})[pid] || p.defaultModel || models[0] || '';
+    const prefer = pid === 'gemini' ? ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-flash-lite-latest'] : [];
+    const list = [...new Set([current, ...prefer, ...models].filter(Boolean))];
+    sel.innerHTML = '';
+    list.forEach((m) => sel.append(A.el('option', { value: m }, m)));
+    sel.value = current;
+    sel.title = `${p.name} · ${current}`;
+  }
+
+  // Al abrir la app: verificar las keys y avisar si la del proveedor activo falla.
+  async function verifyKeysOnStart() {
+    let res = {};
+    try { res = await A.api('ai:verify-all'); } catch { return; }
+    settings = await A.api('settings:get');
+    const pid = settings.aiProvider || 'gemini';
+    const provs = await getProviders();
+    const name = (provs.find((x) => x.id === pid) || {}).name || pid;
+    const warn = A.$('#aiKeyWarn');
+    const r = res[pid];
+    const bad = r && KEY_BAD.has(r.status);
+    if (warn) { warn.classList.toggle('hidden', !bad); warn.title = bad ? `${name}: ${KEY_LABEL[r.status]}` : ''; }
+    if (bad) A.toast(`La API key de ${name}: ${KEY_LABEL[r.status]}. El chat no funcionará hasta que la cambies.`, 'err', { action: { label: 'Configurar', fn: openSettings }, ms: 15000 });
+    const others = Object.entries(res).filter(([id, v]) => id !== pid && KEY_BAD.has(v.status));
+    if (others.length) console.warn('Keys con problemas:', others.map(([id, v]) => `${id}: ${v.status}`).join(', '));
   }
 
   // ---------- configuración ----------
@@ -588,8 +830,7 @@
       A.el('option', { value: 'lite' }, 'Ligero: menos animaciones y sin minimapa (equipos con 8 GB o menos)'),
       A.el('option', { value: 'full' }, 'Completo: todos los efectos'));
     perf.value = settings.perfMode || 'auto';
-    const projArd = A.el('input', { type: 'checkbox' });
-    projArd.checked = arduinoOn();
+    const projPicker = A.app.config ? techPicker(techs()) : null;
     const lang = A.el('select', {}, A.el('option', { value: 'en' }, 'English'), A.el('option', { value: 'es' }, 'Español'));
     lang.value = settings.lang || 'en';
     const introChk = A.el('input', { type: 'checkbox' });
@@ -598,18 +839,18 @@
     const field = (label, input, hint) => A.el('div', { class: 'field' }, A.el('label', {}, label), input, hint ? A.el('small', {}, hint) : null);
     const showKey = A.el('button', { class: 'btn sm ghost', onclick: () => { key.type = key.type === 'password' ? 'text' : 'password'; } }, 'Ver');
     const body = A.el('div', { style: 'display:flex;flex-direction:column;gap:14px' },
-      A.el('div', { class: 'field' }, A.el('label', {}, settings.builtinKey ? 'API key propia de Gemini (opcional)' : 'API key de Google Gemini'), A.el('div', { class: 'row' }, key, showKey),
-        A.el('small', {}, settings.builtinKey ? 'La app ya trae una key integrada. Pon una tuya solo si quieres usar tu propia cuota.' : 'Consíguela gratis en aistudio.google.com → Get API key. Se guarda solo en este equipo.')),
-      field('Modelo de IA por defecto', model, 'Los modelos "pro" razonan mejor; los "flash" responden más rápido.'),
+      aiSection(),
+
       A.el('div', { class: 'field' }, A.el('label', {}, 'arduino-cli'),
         A.el('div', { class: 'row' }, cli, A.el('button', { class: 'btn sm ino', onclick: installCli }, env.arduino.installed ? 'Actualizar' : 'Instalar')),
         A.el('small', {}, env.arduino.installed ? `✔ ${env.arduino.version}` : '⚠ No instalado. Pulsa "Instalar": se descarga la versión oficial automáticamente.')),
       field('Intérprete de Python', py, env.python.installed ? `✔ Detectado: ${env.python.cmd} — ${env.python.version}` : '⚠ No se encontró Python 3'),
+      appearanceSection(),
       field('Tamaño de letra del editor', font),
       field('Rendimiento', perf, 'El modo ligero dibuja sin GPU, quita el minimapa y reduce animaciones: usa casi la mitad de RAM. Ideal para laptops con 8 GB. Reinicia la app para aplicarlo del todo.'),
       A.el('label', { class: 'chk' }, introChk, 'Mostrar la animación de apertura'),
       field('Idioma / Language', lang, 'La ventana se recarga para aplicar el idioma.'),
-      A.app.config ? A.el('label', { class: 'chk' }, projArd, `Este proyecto (${A.app.config.name}) usa una placa Arduino`) : null,
+      projPicker ? A.el('div', { class: 'field' }, A.el('label', {}, `Tecnologías de este proyecto (${A.app.config.name})`), projPicker.el, A.el('small', {}, 'Al activar una, se crean sus archivos iniciales. Al desactivarla no se borra nada.')) : null,
       A.el('div', { class: 'row', style: 'gap:8px;flex-wrap:wrap' },
         A.el('button', { class: 'btn ghost sm', onclick: () => { A.modal.close(); A.wizard.open(); } }, 'Asistente de configuración'),
         A.el('button', { class: 'btn ghost sm', onclick: () => A.features.checkUpdates(true) }, 'Buscar actualizaciones'),
@@ -620,9 +861,9 @@
         class: 'btn ino',
         onclick: async () => {
           const prevLang = settings.lang || 'en';
-          if (A.app.config && projArd.checked !== arduinoOn()) await setArduino(projArd.checked);
+          if (projPicker && projPicker.get().join() !== techs().join()) await setTechs(projPicker.get());
           settings = await A.api('settings:set', {
-            geminiApiKey: key.value.trim(), model: model.value, pythonPath: py.value.trim(),
+            pythonPath: py.value.trim(),
             arduinoCliPath: cli.value.trim(), fontSize: +font.value || 14, autoApply: auto.checked, aiComplete: inline.checked,
             perfMode: perf.value, intro: introChk.checked, lang: lang.value,
           });
@@ -658,14 +899,7 @@
     A.editor.setAiComplete(!!settings.aiComplete);
     applyTheme(settings.theme || 'dark');
     applyPerf();
-    const sel = A.$('#modelSelect');
-    let models = [];
-    try { models = await A.api('ai:models'); } catch {}
-    const prefer = ['gemini-flash-latest', 'gemini-3.8-flash', 'gemini-flash-lite-latest'];
-    const list = [...new Set([settings.model, ...prefer, ...models].filter(Boolean))];
-    sel.innerHTML = '';
-    list.forEach((m) => sel.append(A.el('option', { value: m }, m)));
-    sel.value = settings.model;
+    await refreshModels();
   }
 
   // ---------- librerías ----------
@@ -745,7 +979,15 @@
     A.$('#btnRefreshPorts').addEventListener('click', () => refreshPorts(true));
     A.$('#btnVerify').addEventListener('click', verify);
     A.$('#btnUpload').addEventListener('click', upload);
-    A.$('#btnRunPy').addEventListener('click', () => runPython());
+    A.$('#btnRunPy').addEventListener('click', () => runActive());
+    A.$('#btnPreview').addEventListener('click', () => {
+      const f = A.editor.liveContext().activeFile;
+      openPreview(f && TECH.runnerFor(f) === 'preview' ? f : null);
+    });
+    A.$('#btnPreviewReload').addEventListener('click', () => (previewState ? reloadPreview() : openPreview(null)));
+    A.$('#btnPreviewOpen').addEventListener('click', () => previewState && A.api('open-external', previewState.url));
+    A.$('#previewPage').addEventListener('change', (e) => openPreview(e.target.value));
+    window.arpy.on('fs:changed', () => reloadPreview());
     A.$('#btnStopPy').addEventListener('click', () => A.api('python:stop'));
     A.$('#btnRunAll').addEventListener('click', runAll);
     A.$('#btnLibs').addEventListener('click', openLibs);
@@ -781,7 +1023,10 @@
     });
     A.$('#modalClose').addEventListener('click', () => A.modal.close());
     A.$('#modal').addEventListener('mousedown', (e) => { if (e.target.id === 'modal') A.modal.close(); });
-    A.$('#modelSelect').addEventListener('change', (e) => A.api('settings:set', { model: e.target.value }));
+    A.$('#modelSelect').addEventListener('change', async (e) => {
+      const pid = settings.aiProvider || 'gemini';
+      settings = await A.api('settings:set', pid === 'gemini' ? { model: e.target.value } : { aiModels: { ...(settings.aiModels || {}), [pid]: e.target.value } });
+    });
     A.$('#autoApply').addEventListener('change', (e) => A.api('settings:set', { autoApply: e.target.checked }));
 
     // bienvenida
@@ -791,15 +1036,18 @@
       A.$$('#newTemplate button').forEach((x) => x.classList.toggle('active', x === b));
     };
     A.$$('#newTemplate button').forEach((b) => b.addEventListener('click', () => pickTemplate(b)));
-    // Arduino sí/no: cambia plantillas y oculta la placa
+    // Tecnologías: la placa y las plantillas de Arduino/Python aparecen según lo elegido
+    let newTechs = ['arduino', 'python'];
+    const picker = techPicker(newTechs, (list) => { newTechs = list; syncMode(); });
+    A.$('#newTechs').append(picker.el);
     const syncMode = () => {
-      const ard = A.$('#newArduino').checked;
+      const ard = newTechs.includes('arduino');
+      A.$('#newTplBox').classList.toggle('hidden', !ard && !newTechs.includes('python'));
       A.$('#newBoardField').classList.toggle('hidden', !ard);
       A.$$('#newTemplate button[data-mode]').forEach((b) => b.classList.toggle('off', (b.dataset.mode === 'ard') !== ard));
       const cur = A.$(`#newTemplate button[data-t="${template}"]`);
       if (!cur || cur.classList.contains('off')) pickTemplate(A.$(`#newTemplate button[data-mode="${ard ? 'ard' : 'py'}"]`));
     };
-    A.$('#newArduino').addEventListener('change', syncMode);
     syncMode();
     A.$$('.welcome-tabs button').forEach((b) => b.addEventListener('click', () => welcomeTab(b.dataset.w)));
     A.api('project:default-folder').then((p) => { newFolder = p; updateNewPreview(); });
@@ -811,7 +1059,7 @@
     });
     A.$('#btnCreate').addEventListener('click', async () => {
       try {
-        openProject(await A.api('project:create', { name: A.$('#newName').value, template, board: A.$('#newBoard').value, parent: newFolder, arduino: A.$('#newArduino').checked }));
+        openProject(await A.api('project:create', { name: A.$('#newName').value, template, board: A.$('#newBoard').value, parent: newFolder, tech: newTechs, arduino: newTechs.includes('arduino') }));
       } catch (e) { A.toast(e.message, 'err'); }
     });
     A.$('#btnOpen').addEventListener('click', async () => {
@@ -853,7 +1101,7 @@
       else if (e.ctrlKey && k === 'u') { e.preventDefault(); upload(); }
       else if (e.ctrlKey && e.key === 'F5') { e.preventDefault(); runAll(); }
       else if (e.shiftKey && e.key === 'F5') { e.preventDefault(); A.api('python:stop'); }
-      else if (e.key === 'F5') { e.preventDefault(); runPython(); }
+      else if (e.key === 'F5') { e.preventDefault(); runActive(); }
       else if (e.ctrlKey && k === 'l') { e.preventDefault(); A.$('#chatInput').focus(); }
       else if (e.ctrlKey && k === 'n') { e.preventDefault(); A.explorer.newFile(); }
       else if (e.ctrlKey && e.shiftKey && k === 'f') { e.preventDefault(); A.panels.focusSearch(); }
@@ -882,6 +1130,7 @@
     await applySettings();
     statusbar();
     A.features.init();
+    setTimeout(verifyKeysOnStart, 2500);
     // Primera vez en un equipo nuevo: descarga arduino-cli sin que el usuario tenga que hacer nada.
     if (!env.arduino.installed) setTimeout(installCli, 800);
     if (!A.wizard.resume() && !settings.wizardDone && !(settings.recentProjects || []).length) setTimeout(() => A.wizard.open(), 900);
@@ -904,5 +1153,5 @@
     showWelcome();
   }
 
-  Object.assign(A.app, { welcomeTab, openProject, verify, upload, runAll, init, openBoards, openHistory, saveVersion, quickOpen, applyTheme, updatePyEnv, setBoard, runPython, pythonStopped, refreshPorts, openSettings });
+  Object.assign(A.app, { runActive, openPreview, hasTech, welcomeTab, openProject, verify, upload, runAll, init, openBoards, openHistory, saveVersion, quickOpen, applyTheme, updatePyEnv, setBoard, runPython, pythonStopped, refreshPorts, openSettings });
 })();

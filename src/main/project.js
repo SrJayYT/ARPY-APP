@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
+const T = require('../shared/techs');
 
 const IGNORE = new Set(['.git', '.arpy', 'dist', 'node_modules', '__pycache__', '.venv', 'venv', 'build', '.vscode', '.idea']);
-const TEXT_EXT = new Set(['.ino', '.cpp', '.c', '.h', '.hpp', '.py', '.json', '.txt', '.md', '.html', '.css', '.js', '.csv', '.ini', '.cfg', '.toml', '.yaml', '.yml', '.xml']);
+const TEXT_EXT = new Set(['.ino', '.cpp', '.c', '.h', '.hpp', '.py', '.json', '.txt', '.md', '.html', '.htm', '.css', '.js', '.mjs', '.cjs', '.ts', '.csv', '.ini', '.cfg', '.toml', '.yaml', '.yml', '.xml', '.java', '.php', '.sql', '.ejs', '.svg']);
 
 function resolveIn(root, rel) {
   const full = path.resolve(root, rel);
@@ -66,11 +67,15 @@ function info(root) {
 // Convierte una carpeta existente (ej. sketch de Arduino IDE) en proyecto ARPY.
 function adopt(root) {
   if (isProject(root)) return readConfig(root);
-  const ino = walk(root).find((f) => f.endsWith('.ino'));
-  const py = walk(root).find((f) => f.endsWith('.py'));
+  const files = walk(root);
+  const ino = files.find((f) => f.endsWith('.ino'));
+  const py = files.find((f) => f.endsWith('.py'));
+  const tech = T.TECHS.filter((t) => files.some((f) => T.techOfFile(f) === t)).map((t) => t.id);
+  if (!tech.length) tech.push('python');
   return writeConfig(root, {
     name: path.basename(root),
-    arduino: !!ino, // carpeta sin .ino → proyecto solo de Python
+    tech,
+    arduino: !!ino, // carpeta sin .ino → sin Arduino
     board: ino ? 'arduino:avr:uno' : '',
     port: '',
     baud: 9600,
@@ -369,24 +374,35 @@ if __name__ == "__main__":
   },
 };
 
-// arduino: false → proyecto solo de Python (sin sketch ni placa).
-function create(parent, name, template = 'app', board = 'arduino:avr:uno', { arduino = true } = {}) {
+// Crea un proyecto con las tecnologías elegidas (ej. ['arduino','python','web']).
+// La plantilla solo afecta a Arduino/Python; el resto recibe sus archivos iniciales.
+function create(parent, name, template = 'app', board = 'arduino:avr:uno', opts = {}) {
   if (!String(name || '').trim()) throw new Error('Nombre inválido');
+  let tech = Array.isArray(opts.tech) && opts.tech.length ? opts.tech.filter((id) => T.find(id)) : null;
+  if (!tech) tech = opts.arduino === false ? ['python'] : ['arduino', 'python'];
+  if (!tech.length) throw new Error('Elige al menos una tecnología');
+  const arduino = tech.includes('arduino');
+  const python = tech.includes('python');
   const safe = safeName(name);
   const root = path.join(parent, safe);
   if (fs.existsSync(root) && fs.readdirSync(root).length) throw new Error('La carpeta ya existe y no está vacía');
+  fs.mkdirSync(root, { recursive: true });
   let t = TEMPLATES[template] || TEMPLATES.app;
-  if (!arduino && !t.pythonOnly) { template = 'py-script'; t = TEMPLATES['py-script']; }
   if (arduino && t.pythonOnly) { template = 'app'; t = TEMPLATES.app; }
-  fs.mkdirSync(path.join(root, 'python'), { recursive: true });
+  if (!arduino && python && !t.pythonOnly) { template = 'py-script'; t = TEMPLATES['py-script']; }
   if (arduino) {
     fs.mkdirSync(path.join(root, 'sketch'), { recursive: true });
     fs.writeFileSync(path.join(root, 'sketch', 'sketch.ino'), t.ino || TEMPLATES.app.ino);
   }
-  fs.writeFileSync(path.join(root, 'python', 'main.py'), t.py);
-  fs.writeFileSync(path.join(root, 'python', 'requirements.txt'), t.req ?? 'pyserial\n');
+  if (python) {
+    fs.mkdirSync(path.join(root, 'python'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'python', 'main.py'), t.py);
+    fs.writeFileSync(path.join(root, 'python', 'requirements.txt'), t.req ?? 'pyserial\n');
+  }
+  for (const id of tech) scaffold(root, id);
   writeConfig(root, {
     name: String(name).trim(),
+    tech,
     arduino,
     board: arduino ? board : '',
     port: '',
@@ -394,10 +410,41 @@ function create(parent, name, template = 'app', board = 'arduino:avr:uno', { ard
     venv: true,
     sketch: 'sketch',
     pythonMain: 'python/main.py',
-    template,
+    template: arduino || python ? template : '',
     created: new Date().toISOString(),
   });
   return root;
+}
+
+// Crea los archivos iniciales de una tecnología si su carpeta todavía no existe.
+function scaffold(root, id) {
+  const def = T.find(id);
+  if (!def || fs.existsSync(path.join(root, def.folder))) return false;
+  for (const [rel, content] of T.STARTERS[id] || []) {
+    const full = path.join(root, rel);
+    fs.mkdirSync(path.dirname(full), { recursive: true });
+    if (!fs.existsSync(full)) fs.writeFileSync(full, content);
+  }
+  return true;
+}
+
+// Activa/desactiva tecnologías en un proyecto existente (al activar, crea sus archivos iniciales).
+function setTechs(root, tech) {
+  const cfg = readConfig(root) || {};
+  tech = tech.filter((id) => T.find(id));
+  if (!tech.length) throw new Error('Elige al menos una tecnología');
+  for (const id of tech) {
+    if (id === 'arduino' && !fs.existsSync(path.join(root, cfg.sketch || 'sketch'))) {
+      fs.mkdirSync(path.join(root, cfg.sketch || 'sketch'), { recursive: true });
+      fs.writeFileSync(path.join(root, cfg.sketch || 'sketch', 'sketch.ino'), 'void setup() {\n  Serial.begin(9600);\n}\n\nvoid loop() {\n}\n');
+    } else if (id === 'python' && !fs.existsSync(path.join(root, 'python'))) {
+      fs.mkdirSync(path.join(root, 'python'), { recursive: true });
+      fs.writeFileSync(path.join(root, 'python', 'main.py'), TEMPLATES['py-script'].py);
+      fs.writeFileSync(path.join(root, 'python', 'requirements.txt'), '');
+    } else scaffold(root, id);
+  }
+  const arduino = tech.includes('arduino');
+  return writeConfig(root, { tech, arduino, board: arduino ? cfg.board || 'arduino:avr:uno' : cfg.board || '' });
 }
 
 // ---- Conexiones del editor visual (.arpy/wiring.json) ----
@@ -539,7 +586,7 @@ function restore(root, id) {
 }
 
 module.exports = {
-  projectFile, loadWiring, saveWiring, getActiveChat, setActiveChat, listUI, loadUI, saveUI,
+  projectFile, loadWiring, saveWiring, setTechs, scaffold, getActiveChat, setActiveChat, listUI, loadUI, saveUI,
   info,
   resolveIn, readConfig, writeConfig, isProject, adopt, tree, snapshot, create,
   listChats, loadChat, saveChat, deleteChat, saveImage, readImage, loadMemory, saveMemory, backup, readBackup, restore, isText,

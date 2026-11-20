@@ -463,8 +463,11 @@
   addEventListener('beforeunload', () => { if (persistTimer) persistNow(); });
 
   // ---------- enviar ----------
-  async function send(text, images = []) {
-    text = A.i18n.t((text || '').trim());
+  // opts.raw: texto escrito por el usuario → se envía tal cual (nunca se traduce).
+  // Sin raw: mensajes generados por la app (sugerencias, menús) → van en el idioma de la interfaz.
+  async function send(text, images = [], opts = {}) {
+    text = (text || '').trim();
+    if (!opts.raw) text = A.i18n.t(text);
     if (!text && !images.length) return;
     if (busy) { A.toast('Espera a que termine la respuesta actual (o detenla)'); return; }
     if (!A.app.config) { A.toast('Abre un proyecto primero', 'err'); return; }
@@ -783,7 +786,8 @@
     const def = imgs.length > 1
       ? `Analiza estas ${imgs.length} imágenes una por una y dime qué ves en cada una y cómo se relacionan con el proyecto.`
       : 'Analiza esta imagen y dime qué ves y cómo se relaciona con el proyecto.';
-    send(v.trim() ? v : def, imgs);
+    if (v.trim()) send(v, imgs, { raw: true });
+    else send(def, imgs);
   }
   input.addEventListener('input', autosize);
   input.addEventListener('keydown', (e) => {
@@ -825,7 +829,7 @@
     ['Nuevo sensor', 'Quiero agregar un sensor. Pregúntame cuál si no lo sabes, y luego modifica el sketch y la app Python.'],
   ];
   const ARD_CHIPS = ['Diagrama de conexiones', 'Nuevo sensor'];
-  for (const [label, prompt] of CHIPS) A.$('#chips').append(A.el('button', { class: ARD_CHIPS.includes(label) ? 'ard-only' : '', onclick: () => send(prompt) }, label));
+  for (const [label, prompt] of CHIPS) A.$('#chips').append(A.el('button', { class: ARD_CHIPS.includes(label) ? 'ard-only' : label === 'App Python' ? 'py-only' : '', onclick: () => send(prompt) }, label));
 
   A.chat = { applyHunks, send, load, flush, beforeClose, renderCtx, openMemory, newChat, get busy() { return busy; } };
 })();

@@ -81,3 +81,11 @@ test('diccionario de inglés: patrones válidos y sin traducciones vacías', () 
   assert.strictEqual(t('⬆ Subiendo a Arduino Uno R3 en COM3'), '⬆ Uploading to Arduino Uno R3 on COM3');
   assert.strictEqual(t('Conectado a COM5 @ 9600'), 'Connected to COM5 @ 9600');
 });
+
+test('diccionario de inglés: sin claves repetidas (una repetida pisa a la otra en silencio)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'src', 'shared', 'i18n-en.js'), 'utf8');
+  const body = src.slice(src.indexOf('const exact = {'), src.indexOf('const patterns'));
+  const keys = [...body.matchAll(/(?:^|[{,]\s*)'((?:[^'\\]|\\.)+)':/gm)].map((m) => m[1]);
+  const dup = keys.filter((k, i) => keys.indexOf(k) !== i);
+  assert.deepStrictEqual([...new Set(dup)], []);
+});

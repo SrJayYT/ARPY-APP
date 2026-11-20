@@ -15,6 +15,12 @@ const DEFAULTS = {
   lang: 'en', // idioma de la interfaz: en | es
   wizardDone: false,
   intro: true,
+  appTheme: 'arpy', // uno de los 10 temas de src/shared/themes.js
+  aiProvider: 'gemini', // gemini | anthropic | openai | deepseek | mistral | groq | openrouter
+  aiKeys: {}, // keys de los demás proveedores (solo en este equipo)
+  aiModels: {}, // modelo elegido por proveedor
+  aiKeyStatus: {}, // resultado de la última verificación de cada key
+  editorTheme: 'same', // 'same' o el id de otro tema
 };
 
 function settingsFile() {

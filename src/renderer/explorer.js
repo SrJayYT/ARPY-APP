@@ -89,6 +89,9 @@
       { label: 'Nueva carpeta…', action: () => newFolder(dir) },
       '-',
     ];
+    const kind = !n.dir && window.ARPY_TECHS.runnerFor(n.path);
+    if (kind === 'preview') items.push({ label: '👁 Ver en la vista previa', action: () => A.app.openPreview(n.path) });
+    else if (kind && kind !== 'python') items.push({ label: '▶ Ejecutar este archivo', action: async () => { await A.editor.open(n.path); A.app.runActive(); } });
     if (!n.dir && n.name.endsWith('.py')) {
       items.push({ label: '▶ Ejecutar este archivo Python', action: () => A.app.runPython(n.path) });
       items.push({ label: 'Usar como programa Python principal', action: async () => { await A.api('project:config', { pythonMain: n.path }); A.toast(`Principal: ${n.path}`, 'ok'); } });

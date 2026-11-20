@@ -26,7 +26,7 @@ Program your board, build the Python app that talks to it, and let an AI that kn
 
 | | |
 |---|---|
-| **What it is** · *Qué es* | A Windows desktop IDE that unifies **Arduino** development, **Python** desktop/web apps and an **AI assistant** (Google Gemini) in one project. · *Un IDE de escritorio que une Arduino, apps de Python y un asistente de IA en un solo proyecto.* |
+| **What it is** · *Qué es* | A Windows desktop IDE that unifies **Arduino**, **Python**, **JavaScript**, **web (HTML/CSS/EJS)**, **PHP**, **Java** and **SQL** with an **AI assistant** (Google Gemini) in one project. · *Un IDE que une Arduino, Python, JavaScript, web, PHP, Java y SQL con un asistente de IA en un solo proyecto.* |
 | **Who it's for** · *Para quién* | Students, makers and teachers who build hardware projects with a computer-side app. · *Estudiantes, makers y docentes que hacen proyectos con hardware y una app en el PC.* |
 | **Why** · *Por qué* | No more juggling Arduino IDE + a Python editor + an AI chat you have to paste code into. · *Se acabó saltar entre Arduino IDE, otro editor y un chat de IA al que hay que copiarle el código.* |
 | **Languages** · *Idiomas* | Interface in English (default) or Spanish. · *Interfaz en inglés (por defecto) o español.* |
@@ -55,17 +55,18 @@ flowchart LR
 ## Table of contents
 
 1. [Features](#features)
-2. [Screenshots](#screenshots)
-3. [Getting started](#getting-started)
-4. [How the AI works](#how-the-ai-works)
-5. [`.arpy` projects](#arpy-projects)
-6. [Examples](#examples)
-7. [System requirements & performance](#system-requirements--performance)
-8. [Keyboard shortcuts](#keyboard-shortcuts)
-9. [Architecture](#architecture)
-10. [Development](#development)
-11. [FAQ](#faq)
-12. [License](#license)
+2. [Technologies](#technologies)
+3. [Screenshots](#screenshots)
+4. [Getting started](#getting-started)
+5. [How the AI works](#how-the-ai-works)
+6. [`.arpy` projects](#arpy-projects)
+7. [Examples](#examples)
+8. [System requirements & performance](#system-requirements--performance)
+9. [Keyboard shortcuts](#keyboard-shortcuts)
+10. [Architecture](#architecture)
+11. [Development](#development)
+12. [FAQ](#faq)
+13. [License](#license)
 
 ## Features
 
@@ -73,6 +74,7 @@ flowchart LR
 <tr><td width="50%" valign="top">
 
 **🤖 AI assistant**
+- **Your choice of AI**: Google Gemini (default), **Anthropic Claude**, **OpenAI**, **DeepSeek**, Mistral, Groq or OpenRouter. Keys are checked every time the app opens, so you're warned if one expired, was suspended or ran out of credit.
 - Sees the **whole project** in every message: sketch, Python, board, wiring, compiler/serial/Python output.
 - **Live edits**: removed lines in **red**, added lines in **green** while it types; then *Apply* or *Discard*.
 - **Agent mode**: applies, compiles, reads errors and fixes itself (up to 3 rounds).
@@ -107,10 +109,26 @@ flowchart LR
 - **Version history** with git: save, compare and restore.
 - **Export / import** projects as `.zip`.
 - **Auto-updates** from GitHub Releases. First-run **setup wizard**.
-- Light/dark theme. **Lite mode** for 8 GB laptops.
+- **10 themes**, each with a dark and a light version. Pick one for the app and another for the editor/terminal.
+- **Lite mode** for 8 GB laptops.
 
 </td></tr>
 </table>
+
+## Technologies
+
+Choose the technologies when you create a project. You can mix them (for example Arduino + Python + Web) and turn them on or off later in **Settings**. Only the tools you use are shown.
+
+| Technology | Folder | How it runs (**Run** / `F5`) | Needs |
+|---|---|---|---|
+| **Arduino** (`.ino`) | `sketch/` | Verify, Upload (USB/WiFi), Simulator | arduino-cli (automatic) |
+| **Python** (`.py`) | `python/` | Console, debugger, `.exe` builder | Python 3 (one-click install) |
+| **JavaScript** (`.js`) | `js/` | Node.js | Nothing: built in |
+| **Web** (`.html`, `.css`, `.js`) | `web/` | **Preview** panel, reloads on save | Nothing |
+| **EJS** (`.ejs`) | `views/` | Preview, with data from `<name>.json` | Nothing |
+| **PHP** (`.php`) | `php/` | Console or Preview (PHP's built-in server) | PHP 8.4 (one-click install, ~35 MB) |
+| **Java** (`.java`) | `java/` | `java File.java` | JDK 21 (one-click install, ~200 MB) or your own |
+| **SQL** (`.sql`) | `sql/` | Runs against `sql/database.sqlite`, results as tables | Nothing: SQLite built in |
 
 ## Screenshots
 
@@ -284,9 +302,9 @@ npm run dist       # build installer + portable into dist/
 No. Use the **simulator** (Uno/Nano), or create a **Python-only** project by switching Arduino off when you create it.
 </details>
 
-<details><summary><b>Is the AI free?</b></summary>
+<details><summary><b>Is the AI free? Can I use Claude or ChatGPT?</b></summary>
 
-Gemini has a free daily quota that's enough for normal use. The app shows today's usage, and if one model is busy it switches to a backup model automatically.
+Gemini has a free daily quota that's enough for normal use. The app shows today's usage, and if one model is busy it switches to a backup model automatically. You can also paste a key from Anthropic (Claude), OpenAI, DeepSeek, Mistral, Groq or OpenRouter in **Settings → Artificial intelligence** and pick which one the chat uses. Each provider bills its own API usage.
 </details>
 
 <details><summary><b>Does it work on macOS or Linux?</b></summary>
@@ -309,17 +327,18 @@ It's built with Electron, but only Windows is tested and packaged right now.
 ## Índice
 
 1. [Funciones](#funciones)
-2. [Capturas](#capturas)
-3. [Primeros pasos](#primeros-pasos)
-4. [Cómo trabaja la IA](#cómo-trabaja-la-ia)
-5. [Proyectos `.arpy`](#proyectos-arpy)
-6. [Ejemplos](#ejemplos)
-7. [Requisitos y rendimiento](#requisitos-y-rendimiento)
-8. [Atajos de teclado](#atajos-de-teclado)
-9. [Arquitectura](#arquitectura)
-10. [Desarrollo](#desarrollo)
-11. [Preguntas frecuentes](#preguntas-frecuentes)
-12. [Licencia](#licencia)
+2. [Tecnologías](#tecnologías)
+3. [Capturas](#capturas)
+4. [Primeros pasos](#primeros-pasos)
+5. [Cómo trabaja la IA](#cómo-trabaja-la-ia)
+6. [Proyectos `.arpy`](#proyectos-arpy)
+7. [Ejemplos](#ejemplos)
+8. [Requisitos y rendimiento](#requisitos-y-rendimiento)
+9. [Atajos de teclado](#atajos-de-teclado)
+10. [Arquitectura](#arquitectura)
+11. [Desarrollo](#desarrollo)
+12. [Preguntas frecuentes](#preguntas-frecuentes)
+13. [Licencia](#licencia)
 
 ## Funciones
 
@@ -327,6 +346,7 @@ It's built with Electron, but only Windows is tested and packaged right now.
 <tr><td width="50%" valign="top">
 
 **🤖 Asistente de IA**
+- **Elige tu IA**: Google Gemini (por defecto), **Anthropic Claude**, **OpenAI**, **DeepSeek**, Mistral, Groq u OpenRouter. Las keys se verifican cada vez que abres la app: te avisa si expiraron, se suspendieron o se quedaron sin saldo.
 - Ve **todo el proyecto** en cada mensaje: sketch, Python, placa, conexiones y la salida de compilación, del monitor serie y de Python.
 - **Ediciones en vivo**: mientras escribe, en **rojo** lo que quita y en **verde** lo que pone. Luego *Aplicar* o *Descartar*.
 - **Modo agente**: aplica, compila, lee los errores y se corrige sola (hasta 3 intentos).
@@ -361,10 +381,26 @@ It's built with Electron, but only Windows is tested and packaged right now.
 - **Historial de versiones** con git: guardar, comparar, restaurar.
 - **Exportar / importar** proyectos en `.zip`.
 - **Actualizaciones automáticas** desde GitHub. **Asistente de primer uso**.
-- Tema claro/oscuro. **Modo ligero** para laptops de 8 GB.
+- **10 temas**, cada uno con versión oscura y clara. Uno para la app y otro distinto para el editor/terminal.
+- **Modo ligero** para laptops de 8 GB.
 
 </td></tr>
 </table>
+
+## Tecnologías
+
+Al crear un proyecto eliges sus tecnologías. Se pueden combinar (por ejemplo Arduino + Python + Web) y activar o desactivar después en **Configuración**. Solo se muestran las herramientas que usas.
+
+| Tecnología | Carpeta | Cómo se ejecuta (**Ejecutar** / `F5`) | Necesita |
+|---|---|---|---|
+| **Arduino** (`.ino`) | `sketch/` | Verificar, Subir (USB/WiFi), Simulador | arduino-cli (automático) |
+| **Python** (`.py`) | `python/` | Consola, depurador, crear `.exe` | Python 3 (se instala con un clic) |
+| **JavaScript** (`.js`) | `js/` | Node.js | Nada: viene incluido |
+| **Web** (`.html`, `.css`, `.js`) | `web/` | Panel **Vista previa**, se recarga al guardar | Nada |
+| **EJS** (`.ejs`) | `views/` | Vista previa, con datos de `<nombre>.json` | Nada |
+| **PHP** (`.php`) | `php/` | Consola o Vista previa (servidor de PHP) | PHP 8.4 (un clic, ~35 MB) |
+| **Java** (`.java`) | `java/` | `java Archivo.java` | JDK 21 (un clic, ~200 MB) o el tuyo |
+| **SQL** (`.sql`) | `sql/` | Contra `sql/database.sqlite`, resultados en tablas | Nada: SQLite incluido |
 
 ## Capturas
 
@@ -536,9 +572,9 @@ npm run dist       # instalador + portable en dist/
 No. Usa el **simulador** (Uno/Nano), o crea un proyecto **solo de Python** desactivando Arduino al crearlo.
 </details>
 
-<details><summary><b>¿La IA es gratis?</b></summary>
+<details><summary><b>¿La IA es gratis? ¿Puedo usar Claude o ChatGPT?</b></summary>
 
-Gemini tiene una cuota diaria gratuita que alcanza para el uso normal. La app muestra el uso del día y, si un modelo está saturado, cambia sola a uno de respaldo.
+Gemini tiene una cuota diaria gratuita que alcanza para el uso normal. La app muestra el uso del día y, si un modelo está saturado, cambia sola a uno de respaldo. También puedes pegar una key de Anthropic (Claude), OpenAI, DeepSeek, Mistral, Groq u OpenRouter en **Configuración → Inteligencia artificial** y elegir cuál usa el chat. Cada proveedor cobra su propio uso de la API.
 </details>
 
 <details><summary><b>¿Funciona en macOS o Linux?</b></summary>

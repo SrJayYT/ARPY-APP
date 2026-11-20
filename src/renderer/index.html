@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; worker-src 'self' blob:; connect-src 'self';" />
+    content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data:; worker-src 'self' blob:; connect-src 'self'; frame-src http://127.0.0.1:*;" />
   <title>ARPY Copiler</title>
   <link rel="stylesheet" href="styles.css" />
   <script src="intro.js"></script>
@@ -65,13 +65,14 @@
         <button id="btnUpload" class="btn ino" title="Compilar y subir a la placa (Ctrl+U)"><span data-icon="upload"></span>Subir</button>
       </div>
       <div class="tb-group">
-        <button id="btnRunPy" class="btn py" title="Ejecutar Python (F5)"><span data-icon="play"></span>Python</button>
+        <button id="btnRunPy" class="btn py" title="Ejecutar el archivo abierto: Python, JavaScript, Java, PHP o SQL (F5)"><span data-icon="play"></span>Ejecutar</button>
         <button id="btnStopPy" class="icon-btn" title="Detener Python (Shift+F5)" disabled><span data-icon="stop"></span></button>
         <button id="btnRunAll" class="btn all ard-only" title="Subir sketch y luego ejecutar Python (Ctrl+F5)"><span data-icon="zap"></span>Subir + Ejecutar</button>
       </div>
       <div class="tb-group">
         <button id="btnWiring" class="btn ghost ard-only" title="Editor visual de conexiones: coloca sensores y LEDs sobre la placa"><span data-icon="cable"></span>Conexiones</button>
-        <button id="btnDesigner" class="btn ghost" title="Diseñador de interfaces Python: arrastra botones y gráficas"><span data-icon="layout"></span>Diseñar app</button>
+        <button id="btnDesigner" class="btn ghost py-only" title="Diseñador de interfaces Python: arrastra botones y gráficas"><span data-icon="layout"></span>Diseñar app</button>
+        <button id="btnPreview" class="btn ghost preview-only" title="Vista previa de la página web (HTML, EJS o PHP)"><span data-icon="eye"></span>Vista previa</button>
       </div>
       <div class="spacer"></div>
       <button id="btnSaveVersion" class="icon-btn has-dot" title="Guardar una versión del proyecto (Ctrl+Shift+S)"><span data-icon="gitCommit"></span><i id="gitDot" class="dot"></i></button>
@@ -110,7 +111,8 @@
           <div class="ptabs">
             <button data-panel="output" class="active"><span data-icon="terminal"></span>Salida</button>
             <button data-panel="serial"><span data-icon="plug"></span>Monitor serie<i id="serialDot" class="dot"></i></button>
-            <button data-panel="python"><span data-icon="python"></span>Python<i id="pyDot" class="dot"></i></button>
+            <button data-panel="python"><span data-icon="terminal"></span>Consola<i id="pyDot" class="dot"></i></button>
+            <button data-panel="preview" class="preview-only"><span data-icon="eye"></span>Vista previa</button>
             <button data-panel="plot"><span data-icon="chart"></span>Gráfica</button>
             <button data-panel="problems"><span data-icon="alert"></span>Problemas <b id="problemCount" class="badge">0</b></button>
             <button data-panel="search"><span data-icon="search"></span>Buscar</button>
@@ -145,16 +147,27 @@
 
           <div class="panel" id="panel-python">
             <div class="panel-bar">
-              <span id="pyEnvLabel" class="env-pill" title="Intérprete de Python del proyecto"></span>
-              <button id="btnPipReq" class="btn sm" title="Instala los paquetes de python/requirements.txt">Instalar requirements</button>
-              <input id="pipInput" class="sm-input" placeholder="pip install …" />
+              <span id="pyEnvLabel" class="env-pill py-only" title="Intérprete de Python del proyecto"></span>
+              <button id="btnPipReq" class="btn sm py-only" title="Instala los paquetes de python/requirements.txt">Instalar requirements</button>
+              <input id="pipInput" class="sm-input py-only" placeholder="pip install …" />
               <div class="spacer"></div>
-              <button id="btnDebugPy" class="btn sm ghost" title="Depurar con puntos de parada (clic en el margen del editor para ponerlos)"><span data-icon="bug"></span>Depurar</button>
-              <button id="btnBuildExe" class="btn sm ghost" title="Empaquetar la app Python como .exe"><span data-icon="package"></span>Crear .exe</button>
-              <button id="btnRemotePy" class="btn sm ghost" title="Ejecutar en la placa con Linux (Arduino UNO Q, Raspberry Pi) por SSH"><span data-icon="globe"></span>En la placa</button>
+              <button id="btnDebugPy" class="btn sm ghost py-only" title="Depurar con puntos de parada (clic en el margen del editor para ponerlos)"><span data-icon="bug"></span>Depurar</button>
+              <button id="btnBuildExe" class="btn sm ghost py-only" title="Empaquetar la app Python como .exe"><span data-icon="package"></span>Crear .exe</button>
+              <button id="btnRemotePy" class="btn sm ghost py-only" title="Ejecutar en la placa con Linux (Arduino UNO Q, Raspberry Pi) por SSH"><span data-icon="globe"></span>En la placa</button>
             </div>
             <pre id="pythonLog" class="log"></pre>
             <div class="input-row"><input id="pythonInput" placeholder="Entrada para el programa (stdin)… (Enter)" /></div>
+          </div>
+
+          <div class="panel" id="panel-preview">
+            <div class="panel-bar">
+              <select id="previewPage" title="Página que se muestra"></select>
+              <span id="previewUrl" class="muted preview-url"></span>
+              <div class="spacer"></div>
+              <button id="btnPreviewReload" class="icon-btn sm" title="Recargar"><span data-icon="refresh"></span></button>
+              <button id="btnPreviewOpen" class="btn sm ghost" title="Abrir en el navegador"><span data-icon="globe"></span>Navegador</button>
+            </div>
+            <div class="preview-host"><iframe id="previewFrame" title="Vista previa" sandbox="allow-scripts allow-forms allow-same-origin allow-modals allow-popups"></iframe><div id="previewEmpty" class="preview-empty">Abre una página HTML, EJS o PHP, o pulsa Vista previa.</div></div>
           </div>
 
           <div class="panel" id="panel-plot">
@@ -205,6 +218,7 @@
       <aside id="chat">
         <div class="chat-head">
           <div class="chat-title"><span class="ai-orb"></span>ARPY IA</div>
+          <span id="aiKeyWarn" class="ai-key-warn hidden">⚠</span>
           <select id="modelSelect" title="Modelo de IA"></select>
           <button id="btnMemory" class="icon-btn sm" title="Memoria del proyecto"><span data-icon="brain"></span></button>
         </div>
@@ -289,11 +303,11 @@
               <div class="row"><input id="newFolder" readonly /><button id="btnPickFolder" class="btn ghost">Cambiar…</button></div>
             </label>
             <div class="new-preview" id="newPreview"></div>
-            <label class="wf-switch"><input type="checkbox" id="newArduino" checked /><span class="sw"></span><span><b>Usa una placa Arduino</b><small>Desactívalo para un proyecto solo de Python</small></span></label>
+            <div class="wf"><span>Tecnologías</span><div id="newTechs"></div><small class="muted">Elige una o varias. Puedes cambiarlas después en Configuración.</small></div>
             <label class="wf" id="newBoardField"><span>Placa</span><select id="newBoard"></select></label>
             <button id="btnCreate" class="btn ino wide">Crear proyecto</button>
           </div>
-          <div class="new-tpl">
+          <div class="new-tpl" id="newTplBox">
             <span class="wf-label">Plantilla</span>
             <div class="templates" id="newTemplate">
               <button data-t="app" data-mode="ard" class="active"><b>Arduino + App Python</b><small>Sensor en vivo y control del LED desde una ventana</small></button>
@@ -329,6 +343,8 @@
   <script src="../shared/boards.js"></script>
   <script src="../shared/parts.js"></script>
   <script src="../shared/uigen.js"></script>
+  <script src="../shared/techs.js"></script>
+  <script src="../shared/themes.js"></script>
   <script src="util.js"></script>
   <script src="editor.js"></script>
   <script src="explorer.js"></script>
